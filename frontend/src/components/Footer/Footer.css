@@ -1,0 +1,13 @@
+.footer{
+
+    padding:2rem 0;
+
+    text-align:center;
+
+    border-top:1px solid var(--color-border);
+
+    background:var(--color-surface);
+
+    color:var(--color-muted-grey);
+
+}
