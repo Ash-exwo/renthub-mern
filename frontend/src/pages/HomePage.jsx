@@ -1,9 +1,9 @@
-function HomePage() {
-    return (
-      <section>
-        <h1>Home Page</h1>
-      </section>
-    )
-  }
-  
-  export default HomePage
+import React from 'react'
+
+const HomePage = () => {
+  return (
+    <div>HomePage</div>
+  )
+}
+
+export default HomePage

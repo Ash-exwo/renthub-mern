@@ -1,9 +1,9 @@
-function LoginPage() {
-    return (
-      <section>
-        <h1>Login</h1>
-      </section>
-    )
-  }
-  
-  export default LoginPage
+import React from 'react'
+
+const LoginPage = () => {
+  return (
+    <div>LoginPage</div>
+  )
+}
+
+export default LoginPage

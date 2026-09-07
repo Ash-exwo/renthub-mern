@@ -1,19 +1,17 @@
-import { Outlet } from 'react-router'
+import { Outlet } from 'react-router-dom'
+import Navbar from '../components/Navbar/Navbar'
+import Footer from '../components/Footer/Footer'
 
 function MainLayout() {
   return (
     <div className="main-layout">
-      <header>
-        Navbar will come here
-      </header>
+      <Navbar/>
 
       <main>
         <Outlet />
       </main>
 
-      <footer>
-        Footer will come here
-      </footer>
+      <Footer/>
     </div>
   )
 }

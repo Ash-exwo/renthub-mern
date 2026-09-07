@@ -1,0 +1,51 @@
+.navbar{
+
+    background:var(--color-surface);
+
+    border-bottom:1px solid var(--color-border);
+
+}
+
+.navbar__wrapper{
+
+    display:flex;
+
+    justify-content:space-between;
+
+    align-items:center;
+
+    padding:1rem 0;
+
+}
+
+.navbar__logo{
+
+    font-family:var(--font-heading);
+
+    font-size:1.7rem;
+
+    font-weight:600;
+
+}
+
+.navbar__menu{
+
+    display:flex;
+
+    gap:2rem;
+
+}
+
+.navbar__menu a{
+
+    color:var(--color-muted-grey);
+
+    transition:var(--transition-fast);
+
+}
+
+.navbar__menu a:hover{
+
+    color:var(--color-terracotta);
+
+}

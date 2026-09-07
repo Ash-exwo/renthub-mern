@@ -1,9 +1,9 @@
-function RegisterPage() {
-    return (
-      <section>
-        <h1>Register</h1>
-      </section>
-    )
-  }
-  
-  export default RegisterPage
+import React from 'react'
+
+const RegisterPage = () => {
+  return (
+    <div>RegisterPage</div>
+  )
+}
+
+export default RegisterPage
