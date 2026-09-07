@@ -1,9 +1,17 @@
-import React from 'react'
+import { useLocation } from "react-router-dom";
 
-const HomePage = () => {
+export default function HomePage() {
+  const location = useLocation();
+  const successMessage = location.state?.successMessage;
+
   return (
-    <div>HomePage</div>
-  )
-}
+    <div>
+      {successMessage && (
+        <div role="status" className="success-message">
+          {successMessage}
+        </div>
+      )}
 
-export default HomePage
+    </div>
+  );
+}
