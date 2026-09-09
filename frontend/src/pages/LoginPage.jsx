@@ -66,10 +66,13 @@ export default function LoginPage() {
     setMessage("");
 
     try {
-      await axios.post("http://localhost:5000/api/auth/login", {
+      const response = await axios.post("http://localhost:5000/api/auth/login", {
         email,
         password: formData.password,
       });
+
+      localStorage.setItem("userToken", response.data.token);
+      localStorage.setItem("userData", JSON.stringify(response.data.user));
 
       navigate("/", {
         state: { successMessage: "Login completed successfully." },
