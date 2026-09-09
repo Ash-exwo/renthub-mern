@@ -1,3 +1,4 @@
+const jwt = require("jsonwebtoken");
 const User = require("../models/UserModel");
 
 exports.registerUser = async (req, res) => {
@@ -9,7 +10,13 @@ exports.registerUser = async (req, res) => {
     const cleanPhone = phone?.replace(/\D/g, "");
     const cleanLocation = location?.trim();
 
-    if (!cleanName || !cleanEmail || !password || !cleanPhone || !cleanLocation) {
+    if (
+      !cleanName ||
+      !cleanEmail ||
+      !password ||
+      !cleanPhone ||
+      !cleanLocation
+    ) {
       return res.status(400).json({
         message: "Please fill in all required fields.",
       });
@@ -81,11 +88,24 @@ exports.loginUser = async (req, res) => {
       });
     }
 
+    const token = jwt.sign(
+      {
+        userId: user._id,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "1d",
+      }
+    );
+
     return res.status(200).json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
       message: "Login completed successfully.",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -95,4 +115,3 @@ exports.loginUser = async (req, res) => {
     });
   }
 };
-
