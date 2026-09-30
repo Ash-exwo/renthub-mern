@@ -24,7 +24,7 @@ export function AnimatedBackground({ children }) {
         alignItems: "center",
         justifyContent: "center",
         overflow: "hidden",
-        backgroundColor: "var(--color-bg, #f9fafb)",
+        backgroundColor: "var(--color-canvas)",
         boxSizing: "border-box",
       }}
     >
@@ -47,7 +47,7 @@ export function AnimatedBackground({ children }) {
                 left,
                 right,
                 color: "var(--color-terracotta, #e05638)",
-                opacity: 0.12,
+                opacity: "var(--bg-icon-opacity, 0.14)",
               }}
               animate={{
                 y: [0, -16, 0],
