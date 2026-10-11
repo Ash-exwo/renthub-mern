@@ -13,6 +13,9 @@ import {
   X,
   Maximize2,
   Images,
+  AlertCircle,
+  Calendar,
+  CalendarX,
 } from "lucide-react";
 import api from "../../utils/api";
 import { isLoggedIn, getUser } from "../../utils/auth";
@@ -44,6 +47,11 @@ export default function ListingDetailPage() {
   const [endDate, setEndDate] = useState(nextWeek);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState("");
+  const [bookingNotes, setBookingNotes] = useState("");
+  const [createdBooking, setCreatedBooking] = useState(null);
+  const [bookedRanges, setBookedRanges] = useState([]);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
@@ -114,6 +122,21 @@ export default function ListingDetailPage() {
     fetchListing();
   }, [id]);
 
+  useEffect(() => {
+    async function fetchBookedRanges() {
+      try {
+        const res = await api.get(`/bookings/listing/${id}/booked-dates`);
+        if (res.data?.bookedRanges) {
+          setBookedRanges(res.data.bookedRanges);
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (id) fetchBookedRanges();
+  }, [id, bookingSuccess]);
+
+
   if (loading) {
     return (
       <Container>
@@ -152,13 +175,35 @@ export default function ListingDetailPage() {
   const serviceFee = Math.round(baseTotal * 0.05);
   const grandTotal = baseTotal + securityDeposit + serviceFee;
 
+  // Live Overlap Detection: Checks if user's selected dates clash with any active reservation
+  const dateConflict = (() => {
+    if (!startDate || !endDate || bookedRanges.length === 0) return null;
+    const reqStart = new Date(startDate);
+    reqStart.setHours(0, 0, 0, 0);
+    const reqEnd = new Date(endDate);
+    reqEnd.setHours(0, 0, 0, 0);
+
+    for (const range of bookedRanges) {
+      const existStart = new Date(range.startDate);
+      existStart.setHours(0, 0, 0, 0);
+      const existEnd = new Date(range.endDate);
+      existEnd.setHours(0, 0, 0, 0);
+
+      // Overlap formula: existStart < reqEnd && existEnd > reqStart
+      if (existStart < reqEnd && existEnd > reqStart) {
+        return range;
+      }
+    }
+    return null;
+  })();
+
   const hostName =
     (typeof listing.owner === "object" && listing.owner?.name) ||
     listing.ownerName ||
     "Rental Host";
   const hostInitial = hostName.charAt(0).toUpperCase();
 
-  const handleBookingSubmit = () => {
+  const handleBookingSubmit = async () => {
     if (!loggedIn) {
       navigate("/login", {
         state: { from: `/listings/${id}`, notice: "Please log in to book this rental." },
@@ -166,33 +211,34 @@ export default function ListingDetailPage() {
       return;
     }
 
-    const newBooking = {
-      id: `BK-${Math.floor(10000 + Math.random() * 90000)}`,
-      listingId: id,
-      listingTitle: listing.title,
-      listingImage: images[0],
-      category: categoryName,
-      location: listing.location,
-      ownerName: hostName,
-      startDate,
-      endDate,
-      days: rentalDays,
-      dailyRate,
-      deposit: securityDeposit,
-      serviceFee,
-      totalPrice: grandTotal,
-      status: "Upcoming",
-      createdAt: new Date().toISOString(),
-    };
-
-    try {
-      const stored = JSON.parse(localStorage.getItem("renthub_user_bookings") || "[]");
-      localStorage.setItem("renthub_user_bookings", JSON.stringify([newBooking, ...stored]));
-    } catch (e) {
-      console.error("Failed to store booking:", e);
+    if (isOwner) {
+      setBookingError("You cannot book your own listing.");
+      return;
     }
 
-    setBookingSuccess(true);
+    setBookingLoading(true);
+    setBookingError("");
+
+    try {
+      const res = await api.post("/bookings", {
+        listingId: id,
+        startDate,
+        endDate,
+        notes: bookingNotes,
+      });
+
+      if (res.data?.booking) {
+        setCreatedBooking(res.data.booking);
+        setBookingSuccess(true);
+      }
+    } catch (err) {
+      const msg =
+        err.response?.data?.message ||
+        "Failed to submit booking request. Please check dates and try again.";
+      setBookingError(msg);
+    } finally {
+      setBookingLoading(false);
+    }
   };
 
   const categoryName =
@@ -496,6 +542,58 @@ export default function ListingDetailPage() {
                 </div>
               </div>
 
+              {/* Date Conflict Warning Banner */}
+              {dateConflict && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-semibold flex items-start gap-2">
+                  <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-600" />
+                  <div>
+                    <div className="font-bold">Dates Already Reserved</div>
+                    <div className="font-normal text-[11px] mt-0.5 text-amber-700 dark:text-amber-400 leading-snug">
+                      This item is booked from{" "}
+                      <strong>
+                        {new Date(dateConflict.startDate).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </strong>{" "}
+                      to{" "}
+                      <strong>
+                        {new Date(dateConflict.endDate).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </strong>
+                      . Please pick alternative dates.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Upcoming Booked Dates Preview */}
+              {bookedRanges.length > 0 && !dateConflict && (
+                <div className="text-[11px] text-[var(--color-muted-grey)]">
+                  <span className="font-bold text-[var(--color-espresso)]">Reserved Dates: </span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {bookedRanges.map((r, i) => (
+                      <span
+                        key={i}
+                        className="inline-block bg-[var(--color-surface-secondary)] px-2 py-0.5 rounded text-[10px] font-semibold text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                      >
+                        {new Date(r.startDate).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                        })}{" "}
+                        &rarr;{" "}
+                        {new Date(r.endDate).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Transparent Price Breakdown */}
               <div className="flex flex-col gap-2.5 py-4 border-y border-[var(--color-border-subtle)] text-xs">
                 <div className="flex justify-between text-[var(--color-secondary-text)]">
@@ -533,15 +631,18 @@ export default function ListingDetailPage() {
                   variant="primary"
                   size="lg"
                   fullWidth
+                  disabled={Boolean(dateConflict)}
                   onClick={() => setBookingModalOpen(true)}
                 >
-                  Reserve Rental
+                  {dateConflict ? "Selected Dates Unavailable" : "Reserve Rental"}
                 </Button>
               )}
 
               <div className="text-center text-[11px] text-[var(--color-muted-grey)]">
                 {isOwner
                   ? "This is your listing. Switch to Owner mode to manage availability."
+                  : dateConflict
+                  ? "Select dates outside of the reserved ranges to book."
                   : "You won't be charged yet. Host confirms in < 2 hours."}
               </div>
             </div>
@@ -565,8 +666,13 @@ export default function ListingDetailPage() {
             </Button>
           </Link>
         ) : (
-          <Button variant="primary" size="md" onClick={() => setBookingModalOpen(true)}>
-            Reserve
+          <Button
+            variant="primary"
+            size="md"
+            disabled={Boolean(dateConflict)}
+            onClick={() => setBookingModalOpen(true)}
+          >
+            {dateConflict ? "Unavailable" : "Reserve"}
           </Button>
         )}
       </div>
@@ -577,8 +683,9 @@ export default function ListingDetailPage() {
         onClose={() => {
           setBookingModalOpen(false);
           setBookingSuccess(false);
+          setBookingError("");
         }}
-        title={bookingSuccess ? "Booking Confirmed!" : "Review & Confirm Rental"}
+        title={bookingSuccess ? "Booking Request Submitted!" : "Review & Request Rental"}
       >
         {bookingSuccess ? (
           <div className="text-center py-4">
@@ -586,16 +693,42 @@ export default function ListingDetailPage() {
               <CheckCircle2 size={32} />
             </div>
 
-            <h3 className="text-xl font-extrabold text-[var(--color-espresso)] mb-2">
-              Your reservation is placed!
+            <h3 className="text-xl font-extrabold text-[var(--color-espresso)] mb-1">
+              Request Sent to Host!
             </h3>
+            <div className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 mb-3">
+              Status: Awaiting Owner Approval
+            </div>
+
             <p className="text-sm text-[var(--color-secondary-text)] leading-relaxed mb-6">
-              Host <strong>{hostName}</strong> has received your reservation request for <strong>{listing.title}</strong> from {startDate} to {endDate}.
+              Host <strong>{hostName}</strong> has received your reservation request for{" "}
+              <strong>{listing.title}</strong>. You will be notified as soon as they accept!
             </p>
+
+            <div className="bg-[var(--color-surface-secondary)] p-4 rounded-xl text-xs space-y-2 mb-6 text-left border border-[var(--color-border-subtle)]">
+              <div className="flex justify-between">
+                <span className="text-[var(--color-muted-grey)]">Booking Ref:</span>
+                <span className="font-mono font-bold text-[var(--color-espresso)]">
+                  {createdBooking?._id || "REF-SUBMITTED"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--color-muted-grey)]">Requested Dates:</span>
+                <span className="font-semibold text-[var(--color-espresso)]">
+                  {startDate} to {endDate} ({rentalDays} {rentalDays === 1 ? "day" : "days"})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--color-muted-grey)]">Total Estimated:</span>
+                <span className="font-extrabold text-[var(--color-brand-primary)]">
+                  ₹{(createdBooking?.totalPrice || grandTotal).toLocaleString("en-IN")}
+                </span>
+              </div>
+            </div>
 
             <div className="flex gap-3 justify-center">
               <Link to="/bookings">
-                <Button variant="primary">View My Bookings</Button>
+                <Button variant="primary">View In My Rentals</Button>
               </Link>
               <Button
                 variant="outline"
@@ -617,24 +750,64 @@ export default function ListingDetailPage() {
                 className="w-16 h-16 object-cover rounded-xl shrink-0"
               />
               <div>
-                <h4 className="font-extrabold text-sm text-[var(--color-espresso)] mb-1">{listing.title}</h4>
+                <h4 className="font-extrabold text-sm text-[var(--color-espresso)] mb-1">
+                  {listing.title}
+                </h4>
                 <div className="text-xs text-[var(--color-muted-grey)]">{listing.location}</div>
               </div>
             </div>
 
+            {/* Error banner if dates conflict or validation fails */}
+            {bookingError && (
+              <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-xs font-semibold leading-relaxed">
+                {bookingError}
+              </div>
+            )}
+
             <div className="bg-[var(--color-surface-secondary)] p-3.5 rounded-xl space-y-1.5 text-xs">
               <div className="flex justify-between">
                 <span className="text-[var(--color-muted-grey)]">Dates:</span>
-                <span className="font-semibold text-[var(--color-espresso)]">{startDate} to {endDate} ({rentalDays} days)</span>
+                <span className="font-semibold text-[var(--color-espresso)]">
+                  {startDate} to {endDate} ({rentalDays} {rentalDays === 1 ? "day" : "days"})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--color-muted-grey)]">Daily Rate:</span>
+                <span className="font-semibold text-[var(--color-espresso)]">
+                  ₹{dailyRate.toLocaleString("en-IN")} /day × {rentalDays} = ₹{baseTotal.toLocaleString("en-IN")}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[var(--color-muted-grey)]">Security Deposit:</span>
-                <span className="font-semibold text-emerald-600">₹{securityDeposit.toLocaleString("en-IN")} (Refundable)</span>
+                <span className="font-semibold text-emerald-600">
+                  ₹{securityDeposit.toLocaleString("en-IN")} (Refundable)
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--color-muted-grey)]">Service Fee:</span>
+                <span className="font-semibold text-[var(--color-espresso)]">
+                  ₹{serviceFee.toLocaleString("en-IN")}
+                </span>
               </div>
             </div>
 
+            {/* Optional note for host */}
+            <div>
+              <label className="block text-xs font-bold text-[var(--color-espresso)] mb-1">
+                Message to Host (Optional)
+              </label>
+              <textarea
+                value={bookingNotes}
+                onChange={(e) => setBookingNotes(e.target.value)}
+                placeholder="Share your planned rental purpose or pickup coordination..."
+                rows={2}
+                className="w-full text-xs p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]"
+                maxLength={500}
+              />
+            </div>
+
             <div className="flex justify-between items-baseline border-t border-[var(--color-border-subtle)] pt-3">
-              <span className="font-semibold text-sm text-[var(--color-espresso)]">Total Due Now</span>
+              <span className="font-semibold text-sm text-[var(--color-espresso)]">Total Due</span>
               <span className="font-extrabold text-xl text-[var(--color-brand-primary)]">
                 ₹{grandTotal.toLocaleString("en-IN")}
               </span>
@@ -644,16 +817,21 @@ export default function ListingDetailPage() {
               <Button
                 variant="outline"
                 fullWidth
-                onClick={() => setBookingModalOpen(false)}
+                disabled={bookingLoading}
+                onClick={() => {
+                  setBookingModalOpen(false);
+                  setBookingError("");
+                }}
               >
                 Cancel
               </Button>
               <Button
                 variant="primary"
                 fullWidth
+                loading={bookingLoading}
                 onClick={handleBookingSubmit}
               >
-                Confirm & Pay
+                Request Booking
               </Button>
             </div>
           </div>
