@@ -8,6 +8,11 @@ import {
   Sparkles,
   Zap,
   Pencil,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Maximize2,
+  Images,
 } from "lucide-react";
 import api from "../../utils/api";
 import { isLoggedIn, getUser } from "../../utils/auth";
@@ -39,7 +44,50 @@ export default function ListingDetailPage() {
   const [endDate, setEndDate] = useState(nextWeek);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
-  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+
+  const images =
+    listing?.images && listing.images.length > 0
+      ? listing.images
+      : [
+          "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1000&auto=format&fit=crop&q=80",
+        ];
+
+  const openLightbox = (index = 0) => {
+    setLightboxIndex(index);
+    setLightboxOpen(true);
+  };
+
+  const closeLightbox = () => {
+    setLightboxOpen(false);
+  };
+
+  const nextLightboxImage = () => {
+    setLightboxIndex((prev) => (prev + 1) % images.length);
+  };
+
+  const prevLightboxImage = () => {
+    setLightboxIndex((prev) => (prev - 1 + images.length) % images.length);
+  };
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") closeLightbox();
+      if (e.key === "ArrowRight") nextLightboxImage();
+      if (e.key === "ArrowLeft") prevLightboxImage();
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [lightboxOpen, images.length]);
 
   useEffect(() => {
     async function fetchListing() {
@@ -156,9 +204,6 @@ export default function ListingDetailPage() {
       ? listing.category.icon
       : null;
 
-  const images = listing.images && listing.images.length > 0 ? listing.images : [
-    "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1000&auto=format&fit=crop&q=80"
-  ];
 
   const user = getUser();
   const ownerId = typeof listing.owner === "object" ? listing.owner?._id : listing.owner;
@@ -180,84 +225,129 @@ export default function ListingDetailPage() {
           <span className="text-[var(--color-espresso)] font-bold truncate max-w-xs">{listing.title}</span>
         </div>
 
-        {/* High-res Image Gallery Mosaic with Perfectly Fitted Clean Grid */}
-        {images.length === 1 ? (
-          <div className="w-full h-72 md:h-[440px] rounded-2xl overflow-hidden mb-8 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-sm">
-            <img
-              src={images[0]}
-              alt={listing.title}
-              className="w-full h-full object-cover"
-            />
-          </div>
-        ) : images.length === 2 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 h-72 md:h-[440px] rounded-2xl overflow-hidden mb-8 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-sm">
-            <div className="w-full h-full overflow-hidden bg-[var(--color-surface)] cursor-pointer">
+        {/* High-res Image Gallery with E-Commerce Style Lightbox Trigger */}
+        <div className="relative mb-8 select-none">
+          {images.length === 1 ? (
+            <div
+              className="w-full h-72 md:h-[440px] rounded-2xl overflow-hidden bg-[var(--color-surface)] border border-[var(--color-border)] shadow-sm cursor-pointer group relative"
+              onClick={() => openLightbox(0)}
+            >
               <img
                 src={images[0]}
                 alt={listing.title}
-                className="w-full h-full object-cover hover:opacity-95 transition-opacity duration-300"
-                onClick={() => setSelectedImageIndex(0)}
+                className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300"
               />
-            </div>
-            <div className="w-full h-full overflow-hidden bg-[var(--color-surface)] cursor-pointer">
-              <img
-                src={images[1]}
-                alt="Gallery photo 2"
-                className="w-full h-full object-cover hover:opacity-95 transition-opacity duration-300"
-                onClick={() => setSelectedImageIndex(1)}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 h-72 md:h-[440px] rounded-2xl overflow-hidden mb-8 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-sm">
-            {/* Primary / Selected Image (Takes 2 Columns) */}
-            <div className="md:col-span-2 w-full h-full overflow-hidden bg-[var(--color-surface)]">
-              <img
-                src={images[selectedImageIndex] || images[0]}
-                alt={listing.title}
-                className="w-full h-full object-cover cursor-pointer hover:opacity-95 transition-opacity duration-300"
-              />
-            </div>
-
-            {/* Right Column: Exactly 2 Equal Half-Height Stacked Thumbnails */}
-            <div className="hidden md:flex flex-col gap-2 h-full min-h-0">
-              <div
-                className={`flex-1 min-h-0 w-full overflow-hidden bg-[var(--color-surface)] cursor-pointer relative group transition-all ${
-                  selectedImageIndex === 1
-                    ? "ring-2 ring-inset ring-[var(--color-brand-primary)] opacity-100"
-                    : "opacity-90 hover:opacity-100"
-                }`}
-                onClick={() => setSelectedImageIndex(1)}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openLightbox(0);
+                }}
+                className="absolute bottom-4 right-4 bg-white/90 hover:bg-white text-gray-900 dark:bg-gray-900/90 dark:hover:bg-gray-900 dark:text-white shadow-lg border border-gray-200 dark:border-gray-700 px-3.5 py-1.5 rounded-xl font-semibold text-xs flex items-center gap-2 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
               >
-                <img
-                  src={images[1]}
-                  alt="Gallery thumbnail 1"
-                  className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
-                />
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>View Full Photo</span>
+              </button>
+            </div>
+          ) : images.length === 2 ? (
+            <div className="relative">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 h-72 md:h-[440px] rounded-2xl overflow-hidden bg-[var(--color-surface)] border border-[var(--color-border)] shadow-sm">
+                <div
+                  className="w-full h-full overflow-hidden bg-[var(--color-surface)] cursor-pointer group relative"
+                  onClick={() => openLightbox(0)}
+                >
+                  <img
+                    src={images[0]}
+                    alt={`${listing.title} - photo 1`}
+                    className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
+                </div>
+                <div
+                  className="w-full h-full overflow-hidden bg-[var(--color-surface)] cursor-pointer group relative"
+                  onClick={() => openLightbox(1)}
+                >
+                  <img
+                    src={images[1]}
+                    alt={`${listing.title} - photo 2`}
+                    className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
+                </div>
               </div>
-
-              <div
-                className={`flex-1 min-h-0 w-full overflow-hidden bg-[var(--color-surface)] cursor-pointer relative group transition-all ${
-                  selectedImageIndex === 2
-                    ? "ring-2 ring-inset ring-[var(--color-brand-primary)] opacity-100"
-                    : "opacity-90 hover:opacity-100"
-                }`}
-                onClick={() => setSelectedImageIndex(2)}
+              <button
+                type="button"
+                onClick={() => openLightbox(0)}
+                className="absolute bottom-4 right-4 bg-white/90 hover:bg-white text-gray-900 dark:bg-gray-900/90 dark:hover:bg-gray-900 dark:text-white shadow-lg border border-gray-200 dark:border-gray-700 px-3.5 py-1.5 rounded-xl font-semibold text-xs flex items-center gap-2 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
               >
-                <img
-                  src={images[2]}
-                  alt="Gallery thumbnail 2"
-                  className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
-                />
-                {images.length > 3 && (
-                  <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center text-white font-bold text-sm">
-                    +{images.length - 2} photos
+                <Images className="w-3.5 h-3.5" />
+                <span>View all 2 photos</span>
+              </button>
+            </div>
+          ) : (
+            <div className="relative">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 h-72 md:h-[440px] rounded-2xl overflow-hidden bg-[var(--color-surface)] border border-[var(--color-border)] shadow-sm">
+                {/* Primary Cover Image (Takes 2 columns, static, opens index 0) */}
+                <div
+                  className="md:col-span-2 w-full h-full overflow-hidden bg-[var(--color-surface)] cursor-pointer group relative"
+                  onClick={() => openLightbox(0)}
+                >
+                  <img
+                    src={images[0]}
+                    alt={listing.title}
+                    className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
+                </div>
+
+                {/* Right Column: Exactly 2 Equal Half-Height Stacked Thumbnails */}
+                <div className="hidden md:flex flex-col gap-2 h-full min-h-0">
+                  {/* Top-right thumbnail (Always image 1, opens index 1) */}
+                  <div
+                    className="flex-1 min-h-0 w-full overflow-hidden bg-[var(--color-surface)] cursor-pointer relative group"
+                    onClick={() => openLightbox(1)}
+                  >
+                    <img
+                      src={images[1]}
+                      alt={`${listing.title} - photo 2`}
+                      className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
                   </div>
-                )}
+
+                  {/* Bottom-right thumbnail (Always image 2, opens index 2) */}
+                  <div
+                    className="flex-1 min-h-0 w-full overflow-hidden bg-[var(--color-surface)] cursor-pointer relative group"
+                    onClick={() => openLightbox(2)}
+                  >
+                    <img
+                      src={images[2]}
+                      alt={`${listing.title} - photo 3`}
+                      className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
+                    {images.length > 3 && (
+                      <div className="absolute inset-0 bg-black/45 backdrop-blur-[2px] flex items-center justify-center text-white font-bold text-sm">
+                        +{images.length - 3} photos
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
+
+              {/* View All Photos floating pill button */}
+              <button
+                type="button"
+                onClick={() => openLightbox(0)}
+                className="absolute bottom-4 right-4 bg-white/90 hover:bg-white text-gray-900 dark:bg-gray-900/90 dark:hover:bg-gray-900 dark:text-white shadow-lg border border-gray-200 dark:border-gray-700 px-3.5 py-1.5 rounded-xl font-semibold text-xs flex items-center gap-2 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+              >
+                <Images className="w-3.5 h-3.5" />
+                <span>View all {images.length} photos</span>
+              </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Main Content Layout Split */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_23rem] gap-8 lg:gap-12 items-start">
@@ -569,6 +659,104 @@ export default function ListingDetailPage() {
           </div>
         )}
       </Modal>
+
+      {/* Full-Screen E-Commerce Lightbox Modal */}
+      {lightboxOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Full-screen photo gallery"
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col justify-between select-none animate-fadeIn"
+          onClick={closeLightbox}
+        >
+          {/* Top Bar: Title, Count, Close Button */}
+          <div
+            className="w-full px-6 py-4 flex items-center justify-between text-white border-b border-white/10 shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-xs uppercase tracking-wider bg-white/10 px-2.5 py-1 rounded-md text-white/90">
+                {lightboxIndex + 1} / {images.length}
+              </span>
+              <h3 className="text-sm font-semibold text-white/90 truncate max-w-xs md:max-w-md">
+                {listing.title}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={closeLightbox}
+              aria-label="Close full photo view"
+              className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Center Stage: Previous / Main Image / Next */}
+          <div
+            className="relative flex-1 flex items-center justify-center px-4 md:px-16 py-4 overflow-hidden min-h-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Prev button */}
+            {images.length > 1 && (
+              <button
+                type="button"
+                onClick={prevLightboxImage}
+                aria-label="Previous photo"
+                className="absolute left-4 md:left-6 z-10 p-3 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/20 backdrop-blur-sm transition-all hover:scale-110 active:scale-95 cursor-pointer"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+            )}
+
+            {/* Main Full-Size Image (Uncropped E-commerce presentation) */}
+            <img
+              src={images[lightboxIndex]}
+              alt={`${listing.title} - photo ${lightboxIndex + 1}`}
+              className="max-h-[72vh] md:max-h-[76vh] w-auto max-w-full object-contain rounded-lg shadow-2xl transition-all duration-200"
+            />
+
+            {/* Next button */}
+            {images.length > 1 && (
+              <button
+                type="button"
+                onClick={nextLightboxImage}
+                aria-label="Next photo"
+                className="absolute right-4 md:right-6 z-10 p-3 rounded-full bg-black/60 hover:bg-black/80 text-white border border-white/20 backdrop-blur-sm transition-all hover:scale-110 active:scale-95 cursor-pointer"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            )}
+          </div>
+
+          {/* Bottom Bar: Thumbnail Strip */}
+          {images.length > 1 && (
+            <div
+              className="w-full py-3.5 px-6 border-t border-white/10 flex items-center justify-center gap-3 overflow-x-auto shrink-0 bg-black/40"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {images.map((imgUrl, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setLightboxIndex(idx)}
+                  className={`relative w-16 h-12 md:w-20 md:h-14 rounded-lg overflow-hidden shrink-0 transition-all cursor-pointer ${
+                    lightboxIndex === idx
+                      ? "ring-2 ring-indigo-500 ring-offset-2 ring-offset-black opacity-100 scale-105"
+                      : "opacity-45 hover:opacity-85"
+                  }`}
+                >
+                  <img
+                    src={imgUrl}
+                    alt={`Thumbnail ${idx + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

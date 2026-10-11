@@ -23,15 +23,17 @@ export function Skeleton({ width, height, radius = "sm", className = "", style =
 
 export function ListingCardSkeleton() {
   return (
-    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden shadow-sm">
-      <Skeleton height="180px" radius="none" />
-      <div className="p-4 flex flex-col gap-2">
-        <Skeleton width="40%" height="0.85rem" />
-        <Skeleton width="85%" height="1.1rem" />
-        <Skeleton width="60%" height="0.85rem" />
-        <div className="flex justify-between items-center mt-2">
-          <Skeleton width="30%" height="1.25rem" />
-          <Skeleton width="25%" height="0.9rem" />
+    <div className="h-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between">
+      <Skeleton height="208px" radius="none" />
+      <div className="p-4 sm:p-5 flex flex-col justify-between flex-1 gap-4">
+        <div className="space-y-2">
+          <Skeleton width="40%" height="0.85rem" />
+          <Skeleton width="85%" height="1.1rem" />
+          <Skeleton width="60%" height="0.85rem" />
+        </div>
+        <div className="flex justify-between items-center pt-3 border-t border-[var(--color-border-subtle)]">
+          <Skeleton width="35%" height="1.25rem" />
+          <Skeleton width="25%" height="1.5rem" />
         </div>
       </div>
     </div>
