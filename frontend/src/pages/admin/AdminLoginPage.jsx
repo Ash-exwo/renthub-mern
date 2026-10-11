@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Shield, Lock, User, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { ShieldCheck, Lock, User, Eye, EyeOff, ArrowLeft, Zap } from "lucide-react";
 import api from "../../utils/api";
-import { Input, Button, Card, Badge } from "../../components/ui";
+import { Input, Button, Card } from "../../components/ui";
+import ThemeToggle from "../../components/ThemeToggle";
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
@@ -54,35 +55,62 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6 font-[var(--font-sans)]">
-      <div className="w-full max-w-md">
-        <Card padding="lg" className="bg-slate-900 border-slate-800 text-slate-100 shadow-2xl">
-          <div className="text-center mb-7">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-500/15 text-indigo-400 grid place-items-center mx-auto mb-4 border border-indigo-500/20 shadow-lg shadow-indigo-500/10">
-              <Shield size={28} />
+    <div className="ambient-glow-wrapper min-h-screen flex flex-col justify-between bg-[var(--color-canvas)] text-[var(--color-espresso)] p-4 sm:p-6 lg:p-8 font-[var(--font-sans)] transition-colors duration-200">
+      {/* Top Floating Utility Bar */}
+      <div className="w-full max-w-5xl mx-auto flex items-center justify-between z-20 mb-4 sm:mb-8">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-2 text-xs font-bold text-[var(--color-muted-grey)] hover:text-[var(--color-espresso)] transition-colors p-2 rounded-xl hover:bg-[var(--color-surface-subtle)]"
+        >
+          <ArrowLeft size={16} />
+          <span>Return to Marketplace</span>
+        </Link>
+
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-[var(--color-muted-grey)] font-medium hidden sm:inline">Theme</span>
+          <ThemeToggle />
+        </div>
+      </div>
+
+      {/* Main Login Card */}
+      <div className="w-full max-w-md mx-auto relative z-10 my-auto">
+        <Card
+          padding="lg"
+          variant="elevated"
+          className="bg-[var(--color-surface)] border-[var(--color-border)] shadow-2xl backdrop-blur-xl"
+        >
+          {/* Card Header */}
+          <div className="text-center mb-6">
+            <div className="w-14 h-14 rounded-2xl bg-[var(--color-brand-primary-subtle)] text-[var(--color-brand-primary)] grid place-items-center mx-auto mb-3.5 border border-rose-500/20 shadow-md shadow-rose-500/10">
+              <ShieldCheck size={28} />
             </div>
 
-            <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">
-              Platform Control
-            </span>
-            <h1 className="font-[var(--font-heading)] text-2xl font-bold mt-1.5 mb-1 text-white">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--color-brand-primary-subtle)] text-[var(--color-brand-primary)] text-[11px] font-extrabold uppercase tracking-wider border border-rose-500/20 mb-2">
+              <Zap size={12} />
+              <span>Platform Administration</span>
+            </div>
+
+            <h1 className="font-[var(--font-heading)] text-2xl sm:text-3xl font-black text-[var(--color-espresso)] mb-1.5 tracking-tight">
               Admin Console Login
             </h1>
-            <p className="text-slate-400 text-xs">
+
+            <p className="text-xs sm:text-sm text-[var(--color-secondary-text)]">
               Authorized system administration credentials required.
             </p>
           </div>
 
+          {/* Error Banner */}
           {error && (
             <div
-              className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-xs mb-5 text-center font-medium"
+              className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-600 dark:text-rose-400 text-xs mb-5 text-center font-semibold"
               role="alert"
             >
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
             <Input
               label="Username"
               id="admin-username"
@@ -116,22 +144,24 @@ export default function AdminLoginPage() {
               size="lg"
               fullWidth
               loading={loading}
-              className="mt-2"
+              className="mt-2 font-bold shadow-md shadow-rose-500/25 cursor-pointer"
             >
-              Sign In to Console
+              Sign In to Console &rarr;
             </Button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-slate-800/80 text-center">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
-            >
-              <ArrowLeft size={14} />
-              <span>Return to RentHub Marketplace</span>
-            </Link>
+          {/* Card Footer */}
+          <div className="mt-6 pt-5 border-t border-[var(--color-border-subtle)] text-center">
+            <p className="text-[11px] text-[var(--color-muted-grey)]">
+              RentHub Marketplace Secure Administration Console • Confidential
+            </p>
           </div>
         </Card>
+      </div>
+
+      {/* Bottom Footer Note */}
+      <div className="w-full text-center py-4 text-xs text-[var(--color-muted-grey)] z-10">
+        &copy; {new Date().getFullYear()} RentHub Inc. All rights reserved.
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+// Controller = WHAT should happen?
 const jwt = require("jsonwebtoken");
 const User = require("../models/UserModel");
 
@@ -68,6 +69,8 @@ exports.registerUser = async (req, res) => {
   }
 };
 
+
+// req = Request from the frontend, res = Response to the frontend
 exports.loginUser = async (req, res) => {
   try {
     const email = req.body.email?.trim().toLowerCase();
@@ -103,8 +106,11 @@ exports.loginUser = async (req, res) => {
       token,
       user: {
         id: user._id,
+        _id: user._id,
         name: user.name,
         email: user.email,
+        phone: user.phone || "",
+        location: user.location || "",
       },
     });
   } catch (error) {
@@ -113,5 +119,107 @@ exports.loginUser = async (req, res) => {
     return res.status(500).json({
       message: "Unable to log in. Please try again.",
     });
+  }
+};
+
+// Authenticated user updates their personal profile
+// PUT /api/auth/profile
+exports.updateUserProfile = async (req, res) => {
+  try {
+    const { name, phone, location } = req.body;
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    if (name !== undefined) {
+      const cleanName = name.trim();
+      if (!cleanName || cleanName.length < 3) {
+        return res.status(400).json({
+          message: "Full name must contain at least 3 characters.",
+        });
+      }
+      user.name = cleanName;
+    }
+
+    if (phone !== undefined) {
+      const cleanPhone = phone.replace(/\D/g, "");
+      if (!/^\d{10}$/.test(cleanPhone)) {
+        return res.status(400).json({
+          message: "Phone number must contain exactly 10 digits.",
+        });
+      }
+      user.phone = cleanPhone;
+    }
+
+    if (location !== undefined) {
+      const cleanLocation = location.trim();
+      if (!cleanLocation || cleanLocation.length < 3) {
+        return res.status(400).json({
+          message: "Location must contain at least 3 characters.",
+        });
+      }
+      user.location = cleanLocation;
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      message: "Profile updated successfully.",
+      user: {
+        id: user._id,
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        location: user.location,
+      },
+    });
+  } catch (error) {
+    if (error.name === "ValidationError") {
+      const message = Object.values(error.errors)
+        .map((item) => item.message)
+        .join(" ");
+      return res.status(400).json({ message });
+    }
+
+    console.error("Update profile error:", error);
+    return res.status(500).json({
+      message: "Unable to update profile. Please try again.",
+    });
+  }
+};
+
+// Admin: Get all registered users from MongoDB
+// GET /api/auth/admin/users
+exports.getAdminUsers = async (req, res) => {
+  try {
+    const users = await User.find({})
+      .select("-password")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      count: users.length,
+      users,
+    });
+  } catch (error) {
+    console.error("Get admin users error:", error);
+    return res.status(500).json({ message: "Unable to load users." });
+  }
+};
+
+// Admin: Delete user from MongoDB
+// DELETE /api/auth/admin/users/:id
+exports.adminDeleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await User.findByIdAndDelete(id);
+    return res.status(200).json({ message: "User deleted successfully from database." });
+  } catch (error) {
+    console.error("Admin delete user error:", error);
+    return res.status(500).json({ message: "Failed to delete user." });
   }
 };

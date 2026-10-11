@@ -1,14 +1,28 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Heart } from "lucide-react";
-import { FEATURED_LISTINGS } from "../../utils/mockData";
 import Container from "../../components/Container";
 import { ListingCard, EmptyState } from "../../components/ui";
 
 export default function WishlistPage() {
-  const [favorites, setFavorites] = useState(FEATURED_LISTINGS.slice(0, 4));
+  const [favorites, setFavorites] = useState(() => {
+    try {
+      const stored = localStorage.getItem("renthub_favorites");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const handleRemove = (id) => {
-    setFavorites((prev) => prev.filter((item) => (item._id || item.id) !== id));
+    setFavorites((prev) => {
+      const updated = prev.filter((item) => (item._id || item.id) !== id);
+      try {
+        localStorage.setItem("renthub_favorites", JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
   };
 
   return (

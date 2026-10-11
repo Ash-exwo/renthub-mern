@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -11,130 +11,624 @@ import {
   LogOut,
   Bell,
   Trash2,
-  ShieldAlert,
-  Clock,
   Plus,
-  Check,
   X,
   Menu,
+  Edit3,
+  Power,
+  RefreshCw,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle2,
+  Check,
+  Sun,
+  Moon,
+  Inbox,
 } from "lucide-react";
+import api from "../../utils/api";
+import { getAdminToken, getAdminUser, adminLogout } from "../../utils/auth";
 
-// Mock initial data
-const INITIAL_STATS = [
-  { id: 1, label: "Total Users", value: "1,248", change: "+12%", icon: Users, color: "#2563eb" },
-  { id: 2, label: "Active Listings", value: "432", change: "+8%", icon: Building2, color: "#059669" },
-  { id: 3, label: "Pending Approvals", value: "14", change: "Requires action", icon: Clock, color: "#d97706" },
-  { id: 4, label: "Flagged Reports", value: "5", change: "-3%", icon: ShieldAlert, color: "#dc2626" },
+// Preset rental emojis for interactive picker
+const PRESET_EMOJIS = [
+  { emoji: "🏠", label: "Properties & Villas" },
+  { emoji: "🚗", label: "Cars & Vehicles" },
+  { emoji: "📷", label: "Cameras & Optics" },
+  { emoji: "💻", label: "Computers & Tech" },
+  { emoji: "🔧", label: "Tools & Hardware" },
+  { emoji: "🎉", label: "Party & Events" },
+  { emoji: "🚲", label: "Bikes & Scooters" },
+  { emoji: "⛺", label: "Camping & Outdoors" },
+  { emoji: "🎸", label: "Musical Gear" },
+  { emoji: "🏄", label: "Sports & Surf" },
+  { emoji: "👗", label: "Fashion & Costumes" },
+  { emoji: "🛋️", label: "Furniture & Decor" },
+  { emoji: "🏋️", label: "Fitness & Gym" },
+  { emoji: "🛸", label: "Drones & Robotics" },
+  { emoji: "🎮", label: "Gaming & VR" },
+  { emoji: "📚", label: "Books & Education" },
+  { emoji: "🛥️", label: "Boats & Marine" },
+  { emoji: "📦", label: "General Equipment" },
 ];
 
-const INITIAL_USERS = [
-  { id: "u1", name: "Aswathy V", email: "aswathy@gmail.com", role: "Host", status: "Active", joined: "2026-02-10" },
-  { id: "u2", name: "Rahul Nair", email: "rahul@gmail.com", role: "User", status: "Active", joined: "2026-03-01" },
-  { id: "u3", name: "Sneha Kapoor", email: "sneha@gmail.com", role: "Host", status: "Suspended", joined: "2026-01-15" },
-  { id: "u4", name: "John Doe", email: "john@gmail.com", role: "User", status: "Active", joined: "2026-03-12" },
-];
+// Interactive Chart Data Series for Spline Area & Bar Charts
+const REVENUE_DATA = {
+  "7D": [
+    { label: "Mon", revenue: 14200, bookings: 12, x: 20, y: 150 },
+    { label: "Tue", revenue: 18500, bookings: 15, x: 80, y: 135 },
+    { label: "Wed", revenue: 24100, bookings: 19, x: 140, y: 110 },
+    { label: "Thu", revenue: 21800, bookings: 16, x: 200, y: 120 },
+    { label: "Fri", revenue: 34400, bookings: 27, x: 260, y: 65 },
+    { label: "Sat", revenue: 45600, bookings: 35, x: 320, y: 25 },
+    { label: "Sun", revenue: 39900, bookings: 31, x: 380, y: 45 },
+  ],
+  "30D": [
+    { label: "W1", revenue: 86400, bookings: 78, x: 20, y: 140 },
+    { label: "W2", revenue: 112000, bookings: 94, x: 140, y: 105 },
+    { label: "W3", revenue: 134500, bookings: 118, x: 260, y: 65 },
+    { label: "W4", revenue: 149600, bookings: 129, x: 380, y: 30 },
+  ],
+  "12M": [
+    { label: "Nov", revenue: 240000, bookings: 190, x: 20, y: 155 },
+    { label: "Dec", revenue: 310000, bookings: 250, x: 92, y: 125 },
+    { label: "Jan", revenue: 280000, bookings: 220, x: 164, y: 138 },
+    { label: "Feb", revenue: 345000, bookings: 285, x: 236, y: 95 },
+    { label: "Mar", revenue: 410000, bookings: 330, x: 308, y: 55 },
+    { label: "Apr", revenue: 482500, bookings: 388, x: 380, y: 20 },
+  ],
+};
 
-const INITIAL_LISTINGS = [
-  { id: "l1", title: "Luxury 2BHK Apartment", owner: "Aswathy V", category: "Apartments", price: "₹25,000/mo", status: "Approved" },
-  { id: "l2", title: "DSLR Camera Kit", owner: "Rahul Nair", category: "Electronics", price: "₹1,200/day", status: "Pending" },
-  { id: "l3", title: "Royal Enfield Classic 350", owner: "Sneha Kapoor", category: "Vehicles", price: "₹800/day", status: "Approved" },
-  { id: "l4", title: "Beachfront Villa", owner: "John Doe", category: "Apartments", price: "₹15,000/day", status: "Flagged" },
-];
-
-const INITIAL_CATEGORIES = [
-  { id: "c1", name: "Apartments & Villas", count: 184, icon: "🏠" },
-  { id: "c2", name: "Vehicles & Bikes", count: 96, icon: "🚗" },
-  { id: "c3", name: "Electronics & Gadgets", count: 72, icon: "📷" },
-  { id: "c4", name: "Event & Party Supplies", count: 45, icon: "🎉" },
-  { id: "c5", name: "Tools & Equipment", count: 35, icon: "🔧" },
+const INITIAL_NOTIFICATIONS = [
+  {
+    id: 1,
+    title: "Category Created",
+    desc: "Category stored successfully in MongoDB database.",
+    time: "10m ago",
+    unread: true,
+    type: "success",
+  },
+  {
+    id: 2,
+    title: "Pending Listing Review",
+    desc: "DSLR Camera Kit & Lens submitted by Rahul Nair.",
+    time: "45m ago",
+    unread: true,
+    type: "warning",
+  },
+  {
+    id: 3,
+    title: "Listing Flagged",
+    desc: "Beachfront Villa flagged for misleading photos.",
+    time: "2h ago",
+    unread: true,
+    type: "danger",
+  },
+  {
+    id: 4,
+    title: "New Host Joined",
+    desc: "New owner registered as a verified rental host.",
+    time: "1d ago",
+    unread: false,
+    type: "info",
+  },
 ];
 
 const INITIAL_REPORTS = [
-  { id: "r1", listing: "Beachfront Villa", reportedBy: "Rahul Nair", reason: "Misleading photos and inaccurate pricing", date: "2026-03-22", status: "Open" },
-  { id: "r2", listing: "DSLR Camera Kit", reportedBy: "Sneha Kapoor", reason: "Unresponsive host", date: "2026-03-21", status: "Resolved" },
+  { id: "r1", listing: "Beachfront Villa & Pool", reportedBy: "Rahul Nair", reason: "Misleading photos and inaccurate pricing", date: "2026-03-22", status: "Open" },
+  { id: "r2", listing: "DSLR Camera Kit & Lens", reportedBy: "Sneha Kapoor", reason: "Unresponsive host during booking request", date: "2026-03-21", status: "Resolved" },
 ];
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const admin = JSON.parse(localStorage.getItem("adminUser") || "null");
+  const admin = getAdminUser();
 
-  // State management
+  // Navigation: Default lands on OVERVIEW tab!
   const [activeTab, setActiveTab] = useState("overview");
-  const [searchQuery, setSearchQuery] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [users, setUsers] = useState(INITIAL_USERS);
-  const [listings, setListings] = useState(INITIAL_LISTINGS);
-  const [categories, setCategories] = useState(INITIAL_CATEGORIES);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+
+  // Theme State: Supports both Light and Dark modes!
+  const [isDark, setIsDark] = useState(() => {
+    try {
+      return localStorage.getItem("renthub_theme_v2") === "dark";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleTheme = useCallback(() => {
+    const nextTheme = isDark ? "light" : "dark";
+    setIsDark(!isDark);
+    document.documentElement.setAttribute("data-theme", nextTheme);
+    if (nextTheme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+    try {
+      localStorage.setItem("renthub_theme_v2", nextTheme);
+    } catch {
+      // ignore
+    }
+  }, [isDark]);
+
+  // Interactive Notification Bell Popover State
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const notifRef = useRef(null);
+
+  const unreadNotifCount = useMemo(
+    () => notifications.filter((n) => n.unread).length,
+    [notifications]
+  );
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
+  };
+
+  const dismissNotification = (id) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
+  // Close notifications popover on click outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setIsNotificationsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Analytics Chart State
+  const [chartTimeframe, setChartTimeframe] = useState("7D");
+  const [hoveredPoint, setHoveredPoint] = useState(null);
+
+  // Live Database Category State
+  const [categories, setCategories] = useState([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [categoryError, setCategoryError] = useState("");
+  const [categoryFeedback, setCategoryFeedback] = useState({ type: "", message: "" });
+
+  // Add / Edit Category Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [modalFormData, setModalFormData] = useState({
+    name: "",
+    description: "",
+    icon: "🏠",
+  });
+  const [modalSubmitting, setModalSubmitting] = useState(false);
+  const [modalError, setModalError] = useState("");
+
+  // Live Database Platform Entities State (Users, Listings, Reports)
+  const [users, setUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [listings, setListings] = useState([]);
+  const [loadingListings, setLoadingListings] = useState(false);
   const [reports, setReports] = useState(INITIAL_REPORTS);
-  const [newCatName, setNewCatName] = useState("");
-  const [showAddCat, setShowAddCat] = useState(false);
 
-  const handleLogout = () => {
-    localStorage.removeItem("adminToken");
-    localStorage.removeItem("adminUser");
+  // Clear feedback banner after 4 seconds
+  useEffect(() => {
+    if (categoryFeedback.message) {
+      const timer = setTimeout(() => {
+        setCategoryFeedback({ type: "", message: "" });
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [categoryFeedback]);
+
+  // Handle Logout
+  const handleLogout = useCallback(() => {
+    adminLogout();
     navigate("/admin/login");
+  }, [navigate]);
+
+  // Fetch Categories from Backend API (Live MongoDB)
+  const fetchAdminCategories = useCallback(async () => {
+    const token = getAdminToken();
+    if (!token) {
+      handleLogout();
+      return;
+    }
+
+    setLoadingCategories(true);
+    setCategoryError("");
+
+    try {
+      const response = await api.get("/categories/admin", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = response.data?.categories || [];
+      setCategories(data);
+    } catch (err) {
+      console.error("Failed to load categories:", err);
+      const msg = err.response?.data?.message || "Failed to load categories from database.";
+      setCategoryError(msg);
+      if (err.response?.status === 401) {
+        handleLogout();
+      }
+    } finally {
+      setLoadingCategories(false);
+    }
+  }, [handleLogout]);
+
+  // Fetch Listings from Backend API (Live MongoDB)
+  const fetchAdminListings = useCallback(async () => {
+    const token = getAdminToken();
+    if (!token) return;
+
+    setLoadingListings(true);
+    try {
+      const response = await api.get("/listings/admin/all", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setListings(response.data?.listings || []);
+    } catch (err) {
+      console.error("Failed to load admin listings:", err);
+      if (err.response?.status === 401) {
+        handleLogout();
+      }
+    } finally {
+      setLoadingListings(false);
+    }
+  }, [handleLogout]);
+
+  // Fetch Users from Backend API (Live MongoDB)
+  const fetchAdminUsers = useCallback(async () => {
+    const token = getAdminToken();
+    if (!token) return;
+
+    setLoadingUsers(true);
+    try {
+      const response = await api.get("/auth/admin/users", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setUsers(response.data?.users || []);
+    } catch (err) {
+      console.error("Failed to load admin users:", err);
+      if (err.response?.status === 401) {
+        handleLogout();
+      }
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, [handleLogout]);
+
+  // Load all live database entities on mount
+  useEffect(() => {
+    fetchAdminCategories();
+    fetchAdminListings();
+    fetchAdminUsers();
+  }, [fetchAdminCategories, fetchAdminListings, fetchAdminUsers]);
+
+  // Open Add Category Modal
+  const openAddModal = () => {
+    setEditingCategory(null);
+    setModalFormData({
+      name: "",
+      description: "",
+      icon: "🏠",
+    });
+    setModalError("");
+    setIsModalOpen(true);
   };
 
-  const handleUserStatusToggle = (id) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, status: u.status === "Active" ? "Suspended" : "Active" } : u))
-    );
+  // Open Edit Category Modal
+  const openEditModal = (cat) => {
+    setEditingCategory(cat);
+    setModalFormData({
+      name: cat.name,
+      description: cat.description || "",
+      icon: cat.icon || "📦",
+    });
+    setModalError("");
+    setIsModalOpen(true);
   };
 
-  const handleListingAction = (id, newStatus) => {
-    setListings((prev) => prev.map((l) => (l.id === id ? { ...l, status: newStatus } : l)));
-  };
-
-  const handleDeleteListing = (id) => {
-    setListings((prev) => prev.filter((l) => l.id !== id));
-  };
-
-  const handleAddCategory = (e) => {
+  // Submit Add or Edit Category
+  const handleCategorySubmit = async (e) => {
     e.preventDefault();
-    if (!newCatName.trim()) return;
-    setCategories((prev) => [
-      ...prev,
-      { id: `c${Date.now()}`, name: newCatName.trim(), count: 0, icon: "📁" },
-    ]);
-    setNewCatName("");
-    setShowAddCat(false);
+    const token = getAdminToken();
+    if (!token) {
+      navigate("/admin/login");
+      return;
+    }
+
+    const trimmedName = modalFormData.name.trim();
+    if (!trimmedName) {
+      setModalError("Category name is required.");
+      return;
+    }
+
+    setModalSubmitting(true);
+    setModalError("");
+
+    try {
+      if (editingCategory) {
+        // Edit category PUT /api/categories/:id
+        const res = await api.put(
+          `/categories/${editingCategory._id}`,
+          {
+            name: trimmedName,
+            description: modalFormData.description.trim(),
+            icon: modalFormData.icon || "📦",
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        setCategories((prev) =>
+          prev.map((c) => (c._id === editingCategory._id ? res.data.category : c))
+        );
+        setCategoryFeedback({
+          type: "success",
+          message: `Category "${res.data.category.name}" updated successfully.`,
+        });
+      } else {
+        // Create category POST /api/categories
+        const res = await api.post(
+          "/categories",
+          {
+            name: trimmedName,
+            description: modalFormData.description.trim(),
+            icon: modalFormData.icon || "📦",
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        setCategories((prev) => [res.data.category, ...prev]);
+        setCategoryFeedback({
+          type: "success",
+          message: `Category "${res.data.category.name}" created and stored in database.`,
+        });
+      }
+
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error("Error saving category:", err);
+      setModalError(
+        err.response?.data?.message || "Failed to save category. Please check details."
+      );
+    } finally {
+      setModalSubmitting(false);
+    }
   };
 
+  // Toggle Category Status (Activate / Deactivate - Strictly No Delete)
+  const handleToggleStatus = async (cat) => {
+    const token = getAdminToken();
+    if (!token) {
+      navigate("/admin/login");
+      return;
+    }
+
+    const nextStatus = !cat.isActive;
+
+    // Optimistic update
+    setCategories((prev) =>
+      prev.map((c) => (c._id === cat._id ? { ...c, isActive: nextStatus } : c))
+    );
+
+    try {
+      const res = await api.patch(
+        `/categories/${cat._id}/status`,
+        { isActive: nextStatus },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setCategoryFeedback({
+        type: "success",
+        message: res.data.message || `Category ${nextStatus ? "activated" : "deactivated"}.`,
+      });
+    } catch (err) {
+      console.error("Failed to update status:", err);
+      // Revert optimistic update
+      setCategories((prev) =>
+        prev.map((c) => (c._id === cat._id ? { ...c, isActive: cat.isActive } : c))
+      );
+      setCategoryFeedback({
+        type: "error",
+        message: err.response?.data?.message || "Failed to update category status.",
+      });
+    }
+  };
+
+  // Filter Categories
+  const filteredCategories = useMemo(() => {
+    return categories.filter((cat) => {
+      const matchesSearch =
+        cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (cat.description && cat.description.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      if (categoryFilter === "active") return matchesSearch && cat.isActive === true;
+      if (categoryFilter === "inactive") return matchesSearch && cat.isActive === false;
+      return matchesSearch;
+    });
+  }, [categories, searchQuery, categoryFilter]);
+
+  // Category counts
+  const activeCount = useMemo(() => categories.filter((c) => c.isActive).length, [categories]);
+  const inactiveCount = categories.length - activeCount;
+
+  // Overview Bento KPIs (Live Database Metrics)
+  const activeListingsCount = useMemo(() => listings.filter((l) => l.isActive).length, [listings]);
+
+  const stats = [
+    {
+      id: "stat-users",
+      label: "Registered Users",
+      value: users.length.toString(),
+      change: `${users.length} in DB`,
+      trendLabel: "live users",
+      icon: Users,
+      color: "text-blue-500 bg-blue-500/10 border-blue-500/20",
+    },
+    {
+      id: "stat-listings",
+      label: "Platform Listings",
+      value: listings.length.toString(),
+      change: `${activeListingsCount} Active`,
+      trendLabel: "in DB",
+      icon: Building2,
+      color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
+    },
+    {
+      id: "stat-revenue",
+      label: "Platform Revenue",
+      value: "₹4,82,500",
+      change: "+18%",
+      trendLabel: "vs last month",
+      icon: TrendingUp,
+      color: "text-[var(--color-brand-primary)] bg-[var(--color-brand-primary-subtle)] border-rose-500/20",
+    },
+    {
+      id: "stat-categories",
+      label: "Catalog Categories",
+      value: categories.length.toString(),
+      change: `${activeCount} Active`,
+      trendLabel: "in DB",
+      icon: FolderTree,
+      color: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+    },
+  ];
+
+  // Active chart series
+  const activeSeries = REVENUE_DATA[chartTimeframe] || REVENUE_DATA["7D"];
+
+  // Users tab actions
+  const handleDeleteUser = async (id) => {
+    if (!window.confirm("Are you sure you want to remove this user from the database?")) return;
+    const token = getAdminToken();
+    if (!token) return;
+    try {
+      await api.delete(`/auth/admin/users/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setUsers((prev) => prev.filter((u) => (u._id || u.id) !== id));
+      setCategoryFeedback({
+        type: "success",
+        message: "User deleted successfully from database.",
+      });
+    } catch (err) {
+      console.error("Failed to delete user:", err);
+      setCategoryFeedback({
+        type: "error",
+        message: "Failed to delete user.",
+      });
+    }
+  };
+
+  // Listings tab actions
+  const handleListingAction = async (id, newStatus) => {
+    const token = getAdminToken();
+    if (!token) return;
+    const isAct = newStatus === "Approved" || newStatus === "available";
+    const avail = newStatus === "Approved" ? "available" : (newStatus === "Paused" ? "unavailable" : newStatus);
+
+    try {
+      await api.patch(
+        `/listings/admin/${id}/status`,
+        { isActive: isAct, availability: avail },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      fetchAdminListings();
+      setCategoryFeedback({
+        type: "success",
+        message: `Listing status updated to ${newStatus}.`,
+      });
+    } catch (err) {
+      console.error("Failed to update listing status:", err);
+      setCategoryFeedback({
+        type: "error",
+        message: "Failed to update listing status.",
+      });
+    }
+  };
+
+  const handleDeleteListing = async (id) => {
+    if (!window.confirm("Are you sure you want to permanently delete this listing from database?")) return;
+    const token = getAdminToken();
+    if (!token) return;
+    try {
+      await api.delete(`/listings/admin/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setListings((prev) => prev.filter((l) => (l._id || l.id) !== id));
+      setCategoryFeedback({
+        type: "success",
+        message: "Listing permanently deleted from database.",
+      });
+    } catch (err) {
+      console.error("Failed to delete listing:", err);
+      setCategoryFeedback({
+        type: "error",
+        message: "Failed to delete listing.",
+      });
+    }
+  };
+
+  // Reports tab actions
   const handleResolveReport = (id) => {
     setReports((prev) => prev.map((r) => (r.id === id ? { ...r, status: "Resolved" } : r)));
   };
 
   return (
-    <div className="flex min-h-screen bg-[var(--color-bg)] text-[var(--color-espresso)] relative overflow-x-hidden w-full font-[var(--font-sans)]">
-      {/* Mobile Backdrop Overlay */}
+    <div className="flex h-screen w-screen overflow-hidden bg-[var(--color-canvas)] text-[var(--color-espresso)] font-[var(--font-sans)] transition-colors duration-200">
+      {/* Mobile Drawer Overlay */}
       {isMobileMenuOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40"
+          className="lg:hidden fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-40 transition-opacity"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
-      {/* SIDEBAR */}
+      {/* ======================================================== */}
+      {/* UPGRADED SIDEBAR (Matches Image 3 Luxury Reference)      */}
+      {/* ======================================================== */}
       <aside
-        className={`w-64 bg-slate-900 text-slate-100 flex flex-col p-6 shrink-0 transition-transform duration-300 z-50 fixed lg:static top-0 bottom-0 left-0 ${
+        className={`w-68 h-screen bg-[var(--color-surface)] dark:bg-[#0B101E] border-r border-[var(--color-border)] text-[var(--color-espresso)] flex flex-col p-6 shrink-0 transition-transform duration-300 z-50 fixed lg:static top-0 bottom-0 left-0 overflow-y-auto ${
           isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         } shadow-2xl lg:shadow-none`}
       >
-        <div className="mb-8 pl-2">
-          <span className="text-xs uppercase tracking-wider text-slate-400 font-bold">
-            RentHub Platform
-          </span>
-          <h2 className="text-xl font-bold text-[var(--color-terracotta)] mt-1">
-            Admin Console
-          </h2>
+        {/* Brand Header */}
+        <div className="flex items-center gap-3 mb-8 pl-1">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[var(--color-brand-primary)] to-rose-600 grid place-items-center text-white font-black text-xl shadow-lg shadow-rose-500/25">
+            R
+          </div>
+          <div>
+            <h2 className="text-base font-black tracking-tight text-[var(--color-espresso)]">
+              RentHub
+            </h2>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-[var(--color-brand-primary)]">
+              Admin Console
+            </span>
+          </div>
         </div>
 
+        {/* Administrator Profile Card (Image 3 Style) */}
+        <div className="p-3.5 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] mb-6 flex items-center gap-3">
+          <div className="relative">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-white font-black text-sm grid place-items-center shadow-sm">
+              {(admin?.username || "A").charAt(0).toUpperCase()}
+            </div>
+            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full ring-2 ring-[var(--color-surface)]" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-bold text-[var(--color-espresso)] truncate">
+              {admin?.username || "Administrator"}
+            </div>
+            <div className="text-[11px] text-[var(--color-muted-grey)]">System Admin</div>
+          </div>
+        </div>
+
+        {/* Navigation Tabs */}
         <nav className="flex flex-col gap-1.5 flex-1">
           {[
             { id: "overview", label: "Overview", icon: BarChart3 },
+            { id: "categories", label: "Categories", icon: FolderTree },
             { id: "users", label: "Users Management", icon: Users },
             { id: "listings", label: "Listings Control", icon: Building2 },
-            { id: "categories", label: "Categories", icon: FolderTree },
             { id: "reports", label: "Reports & Flags", icon: Flag },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -143,16 +637,16 @@ export default function AdminDashboard() {
               <button
                 key={tab.id}
                 type="button"
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-colors text-sm font-medium w-full text-left cursor-pointer ${
-                  isActive
-                    ? "bg-[var(--color-brand-primary)] text-white font-semibold shadow-md shadow-indigo-500/30"
-                    : "text-slate-400 hover:text-white hover:bg-slate-800"
-                }`}
                 onClick={() => {
                   setActiveTab(tab.id);
                   setSearchQuery("");
                   setIsMobileMenuOpen(false);
                 }}
+                className={`flex items-center gap-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all cursor-pointer text-left ${
+                  isActive
+                    ? "bg-[var(--color-brand-primary)] text-white shadow-lg shadow-rose-500/25 font-bold"
+                    : "text-[var(--color-secondary-text)] hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-subtle)]"
+                }`}
               >
                 <Icon size={18} />
                 <span>{tab.label}</span>
@@ -161,99 +655,250 @@ export default function AdminDashboard() {
           })}
         </nav>
 
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl border border-slate-800 text-red-400 hover:bg-red-500/10 transition-colors text-sm font-medium mt-auto cursor-pointer"
-        >
-          <LogOut size={18} />
-          <span>Log out</span>
-        </button>
-      </aside>
+        {/* BOTTOM UTILITY (Interactive Light / Dark Switch & Logout) */}
+        <div className="pt-4 border-t border-[var(--color-border)] mt-auto space-y-3">
+          {/* Sleek Light / Dark Toggle Switch (Image 3 Style) */}
+          <div className="flex items-center justify-between p-2 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)]">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--color-secondary-text)] pl-1">
+              <Sun size={14} className={!isDark ? "text-amber-500" : "text-slate-400"} />
+              <span className={!isDark ? "text-[var(--color-espresso)] font-extrabold" : ""}>Light</span>
+            </div>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-x-hidden w-full">
-        {/* HEADER */}
-        <header className="h-16 bg-[var(--color-surface)] border-b border-[var(--color-border)] flex items-center justify-between px-4 sm:px-6 lg:px-8 gap-4 sticky top-0 z-30">
-          <div className="flex items-center gap-3">
             <button
               type="button"
-              className="lg:hidden flex items-center justify-center p-2 rounded-lg border border-[var(--color-border)] text-[var(--color-espresso)] cursor-pointer hover:bg-[var(--color-surface-hover)]"
+              onClick={toggleTheme}
+              className={`w-12 h-6 rounded-full transition-colors p-0.5 flex items-center cursor-pointer ${
+                isDark ? "bg-[var(--color-brand-primary)] justify-end" : "bg-slate-300 dark:bg-slate-700 justify-start"
+              }`}
+              aria-label="Toggle theme mode"
+              title="Toggle Light / Dark mode"
+            >
+              <motion.div
+                layout
+                className="w-5 h-5 rounded-full bg-white shadow-md flex items-center justify-center text-[10px]"
+              >
+                {isDark ? "🌙" : "☀️"}
+              </motion.div>
+            </button>
+
+            <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--color-secondary-text)] pr-1">
+              <span className={isDark ? "text-[var(--color-espresso)] font-extrabold" : ""}>Dark</span>
+              <Moon size={14} className={isDark ? "text-indigo-400" : "text-slate-400"} />
+            </div>
+          </div>
+
+          {/* Sign Out Button */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-rose-500 hover:bg-rose-500/10 hover:border-rose-500/20 transition-colors text-xs font-bold cursor-pointer"
+          >
+            <LogOut size={16} />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ======================================================== */}
+      {/* MAIN CONTENT WORKSPACE                                   */}
+      {/* ======================================================== */}
+      <main className="flex-1 h-screen flex flex-col min-w-0 overflow-y-auto w-full relative">
+        {/* HEADER BAR */}
+        <header className="h-18 shrink-0 bg-[var(--color-surface)] border-b border-[var(--color-border)] flex items-center justify-between px-4 sm:px-8 gap-4 sticky top-0 z-30 shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <button
+              type="button"
+              className="lg:hidden flex items-center justify-center p-2 rounded-xl border border-[var(--color-border)] text-[var(--color-espresso)] cursor-pointer hover:bg-[var(--color-surface-subtle)]"
               onClick={() => setIsMobileMenuOpen((prev) => !prev)}
-              aria-label="Toggle admin menu"
+              aria-label="Toggle admin navigation"
             >
               <Menu size={20} />
             </button>
-            <h1 className="text-lg sm:text-xl font-bold text-[var(--color-espresso)] capitalize">
-              {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+            <h1 className="text-xl sm:text-2xl font-black text-[var(--color-espresso)] capitalize tracking-tight">
+              {activeTab === "overview"
+                ? "Overview & Analytics"
+                : activeTab === "categories"
+                ? "Rental Categories"
+                : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
             </h1>
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <Bell size={20} className="text-slate-400 cursor-pointer hover:text-[var(--color-espresso)] transition-colors" />
-              <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-600 rounded-full" />
-            </div>
+            {/* INTERACTIVE NOTIFICATION BELL */}
+            <div className="relative" ref={notifRef}>
+              <button
+                type="button"
+                onClick={() => setIsNotificationsOpen((prev) => !prev)}
+                className="relative p-2.5 rounded-full border border-[var(--color-border)] text-slate-500 hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
+                aria-label="View notifications"
+                title="Notifications"
+              >
+                <Bell size={18} />
+                {unreadNotifCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-[var(--color-brand-primary)] text-white text-[10px] font-black rounded-full flex items-center justify-center ring-2 ring-[var(--color-surface)] animate-pulse">
+                    {unreadNotifCount}
+                  </span>
+                )}
+              </button>
 
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-cyan-500 text-white grid place-items-center font-bold text-xs shadow-md">
-                {(admin?.username || "A").charAt(0).toUpperCase()}
-              </div>
-              <div className="hidden sm:flex flex-col">
-                <div className="text-xs font-semibold text-[var(--color-espresso)]">{admin?.username || "Admin"}</div>
-                <div className="text-[11px] text-slate-400">System Administrator</div>
-              </div>
+              {/* Notification Popover Panel */}
+              <AnimatePresence>
+                {isNotificationsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                    className="absolute right-0 mt-3 w-80 sm:w-96 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl z-50 p-4 overflow-hidden"
+                  >
+                    <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border-subtle)] mb-3">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-sm text-[var(--color-espresso)]">
+                          Administrative Alerts
+                        </h4>
+                        {unreadNotifCount > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 text-[10px] font-bold">
+                            {unreadNotifCount} new
+                          </span>
+                        )}
+                      </div>
+                      {unreadNotifCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={markAllNotificationsAsRead}
+                          className="text-[11px] font-bold text-[var(--color-brand-primary)] hover:underline cursor-pointer"
+                        >
+                          Mark all as read
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                      {notifications.length > 0 ? (
+                        notifications.map((item) => (
+                          <div
+                            key={item.id}
+                            className={`p-3 rounded-xl border transition-colors flex items-start justify-between gap-2.5 ${
+                              item.unread
+                                ? "bg-[var(--color-surface-subtle)] border-[var(--color-brand-primary)]/30"
+                                : "bg-transparent border-[var(--color-border-subtle)] opacity-75"
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5 min-w-0">
+                              <span
+                                className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                                  item.type === "success"
+                                    ? "bg-emerald-500"
+                                    : item.type === "warning"
+                                    ? "bg-amber-500"
+                                    : item.type === "danger"
+                                    ? "bg-rose-500"
+                                    : "bg-blue-500"
+                                }`}
+                              />
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-[var(--color-espresso)] truncate">
+                                  {item.title}
+                                </div>
+                                <div className="text-[11px] text-[var(--color-secondary-text)] line-clamp-2 mt-0.5">
+                                  {item.desc}
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-1">{item.time}</div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => dismissNotification(item.id)}
+                              className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                              title="Dismiss"
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="py-8 text-center text-xs text-slate-400">
+                          <Inbox size={24} className="mx-auto mb-2 opacity-50" />
+                          No active notifications
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </header>
 
-        {/* BODY CONTENT */}
-        <div className="p-4 sm:p-6 lg:p-8 flex-1">
-          {(activeTab === "users" || activeTab === "listings") && (
-            <div className="mb-6 flex gap-4">
-              <div className="relative flex-1 max-w-sm">
-                <Search
-                  size={16}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-                />
-                <input
-                  type="text"
-                  placeholder={`Search ${activeTab}...`}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-1 focus:ring-[var(--color-terracotta)]"
-                />
+        {/* FEEDBACK TOAST BANNER */}
+        <AnimatePresence>
+          {categoryFeedback.message && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className={`mx-4 sm:mx-8 mt-4 px-4 py-3 rounded-2xl border flex items-center justify-between text-sm font-semibold shadow-xs ${
+                categoryFeedback.type === "success"
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                  : "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                {categoryFeedback.type === "success" ? (
+                  <CheckCircle2 size={18} className="text-emerald-600" />
+                ) : (
+                  <AlertCircle size={18} className="text-rose-600" />
+                )}
+                <span>{categoryFeedback.message}</span>
               </div>
-            </div>
+              <button
+                type="button"
+                onClick={() => setCategoryFeedback({ type: "", message: "" })}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </motion.div>
           )}
+        </AnimatePresence>
 
-          {/* OVERVIEW TAB */}
+        {/* MAIN BODY WORKSPACE */}
+        <div className="p-4 sm:p-8 flex-1 max-w-7xl w-full">
+          {/* ======================================================== */}
+          {/* TAB 1: OVERVIEW & ADVANCED ANIMATED GRAPHS (IMAGE 3)    */}
+          {/* ======================================================== */}
           {activeTab === "overview" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 mb-8">
-                {INITIAL_STATS.map((stat) => {
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-6"
+            >
+              {/* Top 4 Bento KPI Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+                {stats.map((stat) => {
                   const Icon = stat.icon;
                   return (
                     <div
                       key={stat.id}
-                      className="bg-[var(--color-surface)] p-5 rounded-2xl border border-[var(--color-border)] flex items-center justify-between gap-3 shadow-sm"
+                      className="bg-[var(--color-surface)] p-5 rounded-3xl border border-[var(--color-border)] shadow-xs flex items-center justify-between gap-3 hover:shadow-md transition-shadow"
                     >
                       <div>
-                        <span className="text-xs text-slate-500">{stat.label}</span>
-                        <h3 className="text-2xl font-bold text-[var(--color-espresso)] my-1">
+                        <span className="text-xs font-bold text-[var(--color-muted-grey)] uppercase tracking-wider">
+                          {stat.label}
+                        </span>
+                        <h3 className="text-2xl sm:text-3xl font-black text-[var(--color-espresso)] my-1 tracking-tight">
                           {stat.value}
                         </h3>
-                        <span className="text-xs font-semibold" style={{ color: stat.color }}>
-                          {stat.change}
-                        </span>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                          <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/10">
+                            {stat.change}
+                          </span>
+                          <span className="text-[var(--color-muted-grey)] font-medium">
+                            {stat.trendLabel}
+                          </span>
+                        </div>
                       </div>
-                      <div
-                        className="w-12 h-12 rounded-xl grid place-items-center shrink-0"
-                        style={{
-                          background: `${stat.color}15`,
-                          color: stat.color,
-                        }}
-                      >
+                      <div className={`w-12 h-12 rounded-2xl grid place-items-center shrink-0 border ${stat.color}`}>
                         <Icon size={22} />
                       </div>
                     </div>
@@ -261,299 +906,798 @@ export default function AdminDashboard() {
                 })}
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6">
-                <div className="bg-[var(--color-surface)] p-5 sm:p-6 rounded-2xl border border-[var(--color-border)] shadow-sm">
-                  <h3 className="text-base font-bold text-[var(--color-espresso)] mb-4">
-                    Pending Listing Approvals
-                  </h3>
-                  <div className="flex flex-col gap-3">
-                    {listings
-                      .filter((l) => l.status === "Pending")
-                      .map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between flex-wrap gap-2 p-3 border border-[var(--color-border-subtle)] rounded-xl bg-[var(--color-surface-secondary)]"
-                        >
-                          <div>
-                            <div className="font-semibold text-sm text-[var(--color-espresso)]">{item.title}</div>
-                            <div className="text-xs text-slate-500">
-                              By {item.owner} • {item.price}
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleListingAction(item.id, "Approved")}
-                              className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 transition-colors cursor-pointer"
-                              title="Approve"
-                            >
-                              <Check size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleListingAction(item.id, "Rejected")}
-                              className="p-1.5 rounded-lg bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-colors cursor-pointer"
-                              title="Reject"
-                            >
-                              <X size={16} />
-                            </button>
-                          </div>
+              {/* BENTO GRID: ADVANCED ANIMATED CHARTS (Image 3 Inspiration) */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* 1. Wavy Spline Area Chart (Revenue & Growth - Image 3 Spline) (2 Cols) */}
+                <div className="lg:col-span-2 bg-[var(--color-surface)] p-6 rounded-3xl border border-[var(--color-border)] shadow-xs flex flex-col justify-between">
+                  <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                      <div>
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[var(--color-brand-primary-subtle)] text-[var(--color-brand-primary)] text-[10px] font-extrabold uppercase tracking-wider mb-1">
+                          Financial Performance
                         </div>
+                        <h3 className="font-black text-lg text-[var(--color-espresso)] tracking-tight">
+                          Platform Rental Revenue & Growth
+                        </h3>
+                      </div>
+
+                      {/* Timeframe selector */}
+                      <div className="flex items-center gap-1 p-1 bg-[var(--color-surface-secondary)] rounded-xl border border-[var(--color-border)] text-xs font-bold">
+                        {["7D", "30D", "12M"].map((tf) => (
+                          <button
+                            key={tf}
+                            type="button"
+                            onClick={() => {
+                              setChartTimeframe(tf);
+                              setHoveredPoint(null);
+                            }}
+                            className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                              chartTimeframe === tf
+                                ? "bg-[var(--color-surface)] text-[var(--color-espresso)] shadow-xs"
+                                : "text-slate-500 hover:text-[var(--color-espresso)]"
+                            }`}
+                          >
+                            {tf}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Hover Tooltip Value Banner */}
+                    <div className="h-10 flex items-center justify-between text-xs px-1 mb-2">
+                      {hoveredPoint ? (
+                        <div className="flex items-center gap-4 bg-[var(--color-surface-subtle)] px-3 py-1.5 rounded-xl border border-[var(--color-border)]">
+                          <span className="font-extrabold text-[var(--color-espresso)]">
+                            {hoveredPoint.label}
+                          </span>
+                          <span className="text-[var(--color-brand-primary)] font-black">
+                            ₹{hoveredPoint.revenue.toLocaleString()}
+                          </span>
+                          <span className="text-slate-500">
+                            {hoveredPoint.bookings} Rentals
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-slate-400 text-xs">
+                          <span className="w-2 h-2 rounded-full bg-[var(--color-brand-primary)]" />
+                          <span>Hover over chart spline points to inspect detailed volume</span>
+                        </div>
+                      )}
+                      <span className="text-emerald-600 font-extrabold text-xs">
+                        +24.6% Avg ROI
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* SVG Wavy Spline Curve */}
+                  <div className="relative w-full h-56 pt-2">
+                    <svg viewBox="0 0 400 180" className="w-full h-full overflow-visible">
+                      <defs>
+                        <linearGradient id="splineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="#FF385C" stopOpacity="0.35" />
+                          <stop offset="100%" stopColor="#FF385C" stopOpacity="0.0" />
+                        </linearGradient>
+                      </defs>
+
+                      {/* Area Fill */}
+                      <path
+                        d="M 20,180 L 20,150 C 80,135 140,110 200,120 C 260,65 320,25 380,45 L 380,180 Z"
+                        fill="url(#splineGradient)"
+                      />
+
+                      {/* Smooth Bezier Spline Stroke */}
+                      <path
+                        d="M 20,150 C 80,135 140,110 200,120 C 260,65 320,25 380,45"
+                        fill="none"
+                        stroke="#FF385C"
+                        strokeWidth="3.5"
+                        strokeLinecap="round"
+                      />
+
+                      {/* Secondary Comparison Ghost Line */}
+                      <path
+                        d="M 20,165 C 80,155 140,140 200,145 C 260,110 320,80 380,95"
+                        fill="none"
+                        stroke="#94A3B8"
+                        strokeWidth="2"
+                        strokeDasharray="4 4"
+                        strokeOpacity="0.4"
+                      />
+
+                      {/* Interactive Data Points */}
+                      {activeSeries.map((pt, idx) => {
+                        const isHovered = hoveredPoint?.label === pt.label;
+                        return (
+                          <g
+                            key={idx}
+                            onMouseEnter={() => setHoveredPoint(pt)}
+                            onMouseLeave={() => setHoveredPoint(null)}
+                            className="cursor-pointer"
+                          >
+                            <circle
+                              cx={pt.x}
+                              cy={pt.y}
+                              r={isHovered ? 7 : 4.5}
+                              className="fill-white stroke-[var(--color-brand-primary)] stroke-3 transition-all"
+                            />
+                            {isHovered && (
+                              <circle
+                                cx={pt.x}
+                                cy={pt.y}
+                                r={12}
+                                className="fill-[var(--color-brand-primary)]/20 animate-ping"
+                              />
+                            )}
+                          </g>
+                        );
+                      })}
+                    </svg>
+
+                    {/* X-Axis Labels */}
+                    <div className="flex justify-between text-[11px] font-bold text-slate-400 mt-2 px-1">
+                      {activeSeries.map((pt, idx) => (
+                        <span key={idx}>{pt.label}</span>
                       ))}
-                    {listings.filter((l) => l.status === "Pending").length === 0 && (
-                      <p className="text-sm text-slate-500">No pending listings.</p>
-                    )}
+                    </div>
                   </div>
                 </div>
 
-                <div className="bg-[var(--color-surface)] p-5 sm:p-6 rounded-2xl border border-[var(--color-border)] shadow-sm">
-                  <h3 className="text-base font-bold text-[var(--color-espresso)] mb-4">
-                    System Status
-                  </h3>
-                  <div className="flex flex-col gap-3 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Logged in as</span>
-                      <span className="font-semibold text-[var(--color-espresso)]">{admin?.username || "Admin"}</span>
+                {/* 2. Circular Radial Donut Progress Chart (Category Demand - Image 3 Style) (1 Col) */}
+                <div className="bg-[var(--color-surface)] p-6 rounded-3xl border border-[var(--color-border)] shadow-xs flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-black text-base text-[var(--color-espresso)]">
+                        Category Demand
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("categories")}
+                        className="text-xs font-bold text-[var(--color-brand-primary)] hover:underline cursor-pointer"
+                      >
+                        Manage &rarr;
+                      </button>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Total Categories</span>
-                      <span className="font-semibold text-[var(--color-espresso)]">{categories.length}</span>
+
+                    {/* Donut Radial Visual */}
+                    <div className="relative w-44 h-44 mx-auto my-2">
+                      <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                        {/* Background Ring */}
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          className="stroke-slate-100 dark:stroke-slate-800"
+                          strokeWidth="11"
+                          fill="none"
+                        />
+                        {/* Progress Segment */}
+                        <motion.circle
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          stroke="#FF385C"
+                          strokeWidth="11"
+                          fill="none"
+                          strokeDasharray="251.2"
+                          initial={{ strokeDashoffset: 251.2 }}
+                          animate={{ strokeDashoffset: 45 }}
+                          transition={{ duration: 1.2, ease: "easeOut" }}
+                          strokeLinecap="round"
+                        />
+                        {/* Secondary Segment */}
+                        <motion.circle
+                          cx="50"
+                          cy="50"
+                          r="40"
+                          stroke="#4F46E5"
+                          strokeWidth="11"
+                          fill="none"
+                          strokeDasharray="251.2"
+                          strokeDashoffset="190"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      {/* Center Stats */}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                        <span className="text-2xl font-black text-[var(--color-espresso)]">
+                          86%
+                        </span>
+                        <span className="text-[10px] uppercase font-bold text-slate-400">
+                          Active Demand
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Open Reports</span>
-                      <span className="font-semibold text-red-600">
-                        {reports.filter((r) => r.status === "Open").length}
-                      </span>
+
+                    {/* Categories Breakdown Legend */}
+                    <div className="space-y-2 mt-4">
+                      {categories.slice(0, 4).map((c, i) => {
+                        const shares = ["42%", "26%", "18%", "14%"];
+                        return (
+                          <div key={c._id} className="flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-2 font-semibold text-[var(--color-espresso)] truncate">
+                              <span>{c.icon || "📦"}</span>
+                              <span className="truncate">{c.name}</span>
+                            </span>
+                            <span className="font-extrabold text-slate-500">{shares[i] || "10%"}</span>
+                          </div>
+                        );
+                      })}
+                      {categories.length === 0 && (
+                        <p className="text-xs text-slate-400 text-center py-2">
+                          No categories registered yet.
+                        </p>
+                      )}
                     </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-[var(--color-border-subtle)] text-center">
+                    <span className="text-[11px] text-[var(--color-muted-grey)]">
+                      {categories.length} Total Categories in MongoDB
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3. Platform Booking Volume Bar Chart with Highlight Pill (1 Col) */}
+                <div className="bg-[var(--color-surface)] p-6 rounded-3xl border border-[var(--color-border)] shadow-xs">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="font-black text-base text-[var(--color-espresso)]">
+                        Daily Booking Volume
+                      </h3>
+                      <p className="text-xs text-slate-400">Confirmed item rentals</p>
+                    </div>
+                    <span className="px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-extrabold">
+                      Peak: Sat (35)
+                    </span>
+                  </div>
+
+                  {/* Vertical Column Bars */}
+                  <div className="flex items-end justify-between gap-2 h-44 pt-4 border-b border-[var(--color-border)] px-1">
+                    {REVENUE_DATA["7D"].map((day, idx) => {
+                      const isPeak = day.label === "Sat";
+                      const height = Math.round((day.bookings / 35) * 100);
+                      return (
+                        <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
+                          {isPeak && (
+                            <span className="text-[10px] font-black text-rose-500 bg-rose-500/10 px-1.5 py-0.5 rounded-full mb-1">
+                              Peak
+                            </span>
+                          )}
+                          <div className="w-full max-w-[28px] bg-slate-100 dark:bg-slate-800 rounded-t-xl overflow-hidden h-full flex flex-col justify-end">
+                            <motion.div
+                              initial={{ height: 0 }}
+                              animate={{ height: `${height}%` }}
+                              transition={{ duration: 0.5, delay: idx * 0.05 }}
+                              className={`w-full rounded-t-lg ${
+                                isPeak
+                                  ? "bg-[var(--color-brand-primary)]"
+                                  : "bg-slate-300 dark:bg-slate-700 hover:bg-slate-400"
+                              }`}
+                            />
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-400">{day.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 4. Recent Platform Listings (Live MongoDB) */}
+                <div className="lg:col-span-2 bg-[var(--color-surface)] p-6 rounded-3xl border border-[var(--color-border)] shadow-xs">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="font-black text-base text-[var(--color-espresso)]">
+                        Recent Platform Listings
+                      </h3>
+                      <p className="text-xs text-slate-400">Live rental listings from MongoDB</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("listings")}
+                      className="text-xs font-bold text-[var(--color-brand-primary)] hover:underline cursor-pointer"
+                    >
+                      View all &rarr;
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {listings.slice(0, 5).map((item) => {
+                      const itemId = item._id || item.id;
+                      const ownerName = typeof item.owner === "object" ? item.owner?.name || "User" : item.owner || "User";
+                      const catName = typeof item.category === "object" ? item.category?.name || "General" : item.category || "General";
+                      const catIcon = typeof item.category === "object" ? item.category?.icon : null;
+                      const priceStr = "₹" + Number(item.rentalPricePerDay || 0).toLocaleString("en-IN") + "/day";
+                      const isLive = item.isActive;
+
+                      return (
+                        <div
+                          key={itemId}
+                          className="flex items-center justify-between flex-wrap gap-2 p-3.5 border border-[var(--color-border)] rounded-2xl bg-[var(--color-surface-subtle)]"
+                        >
+                          <div>
+                            <div className="font-bold text-sm text-[var(--color-espresso)]">
+                              {item.title}
+                            </div>
+                            <div className="text-xs text-slate-500 mt-0.5">
+                              By {ownerName} • {catIcon && <span>{catIcon} </span>}{catName} • {priceStr}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleListingAction(itemId, isLive ? "Paused" : "Approved")}
+                              className={`px-3 py-1 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                                isLive
+                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
+                                  : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20"
+                              }`}
+                            >
+                              {isLive ? "Pause" : "Activate"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteListing(itemId)}
+                              className="w-7 h-7 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                              title="Delete Listing"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {listings.length === 0 && (
+                      <p className="text-xs text-slate-400 py-4 text-center">
+                        No listings found in MongoDB yet.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
             </motion.div>
           )}
 
-          {/* USERS TAB */}
+          {/* ======================================================== */}
+          {/* TAB 2: CATEGORIES (Live MongoDB + Emoji Picker Modal)     */}
+          {/* ======================================================== */}
+          {activeTab === "categories" && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+              {/* Header Row */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-xl font-black text-[var(--color-espresso)] tracking-tight">
+                    Rental Categories Catalog
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Live categories stored in MongoDB. Activated categories appear in customer search dropdowns.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={fetchAdminCategories}
+                    disabled={loadingCategories}
+                    className="p-2.5 rounded-full border border-[var(--color-border)] text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer disabled:opacity-50"
+                    title="Refresh categories from database"
+                  >
+                    <RefreshCw size={16} className={loadingCategories ? "animate-spin" : ""} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={openAddModal}
+                    className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[var(--color-brand-primary)] text-white text-sm font-bold shadow-md shadow-rose-500/25 hover:opacity-95 transition-all cursor-pointer"
+                  >
+                    <Plus size={18} />
+                    <span>Add Category</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Search & Status Filters */}
+              <div className="flex flex-col sm:flex-row gap-3 mb-6 items-stretch sm:items-center justify-between">
+                <div className="relative flex-1 max-w-md">
+                  <Search
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search categories by name or description..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 focus:border-[var(--color-brand-primary)] transition-all"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Pills */}
+                <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-secondary)] rounded-2xl border border-[var(--color-border)] text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter("all")}
+                    className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                      categoryFilter === "all"
+                        ? "bg-[var(--color-surface)] text-[var(--color-espresso)] shadow-xs font-bold"
+                        : "text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)]"
+                    }`}
+                  >
+                    All ({categories.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter("active")}
+                    className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                      categoryFilter === "active"
+                        ? "bg-[var(--color-surface)] text-emerald-700 dark:text-emerald-400 shadow-xs font-bold"
+                        : "text-slate-600 dark:text-slate-300 hover:text-emerald-700"
+                    }`}
+                  >
+                    Active ({activeCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter("inactive")}
+                    className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                      categoryFilter === "inactive"
+                        ? "bg-[var(--color-surface)] text-amber-700 dark:text-amber-400 shadow-xs font-bold"
+                        : "text-slate-600 dark:text-slate-300 hover:text-amber-700"
+                    }`}
+                  >
+                    Inactive ({inactiveCount})
+                  </button>
+                </div>
+              </div>
+
+              {/* Error banner */}
+              {categoryError && (
+                <div className="p-4 mb-6 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-sm flex items-center justify-between">
+                  <span>{categoryError}</span>
+                  <button
+                    type="button"
+                    onClick={fetchAdminCategories}
+                    className="text-xs font-bold underline cursor-pointer"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {/* Category Bento Cards Grid */}
+              {loadingCategories ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {[1, 2, 3, 4, 5, 6].map((idx) => (
+                    <div
+                      key={idx}
+                      className="bg-[var(--color-surface)] p-6 rounded-3xl border border-[var(--color-border)] flex items-center gap-4 animate-pulse"
+                    >
+                      <div className="w-14 h-14 rounded-2xl bg-slate-200 dark:bg-slate-800 shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded-md w-3/4" />
+                        <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-md w-1/2" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredCategories.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {filteredCategories.map((cat) => (
+                    <motion.div
+                      key={cat._id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className={`group bg-[var(--color-surface)] p-6 rounded-3xl border transition-all duration-200 flex flex-col justify-between shadow-xs hover:shadow-md ${
+                        cat.isActive
+                          ? "border-[var(--color-border)] hover:border-slate-300 dark:hover:border-slate-700"
+                          : "border-dashed border-amber-400/80 bg-amber-500/5 opacity-85"
+                      }`}
+                    >
+                      <div className="flex items-start gap-4">
+                        {/* Big Emoji Avatar */}
+                        <div className="w-14 h-14 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border-subtle)] flex items-center justify-center text-3xl shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+                          {cat.icon || "📦"}
+                        </div>
+
+                        {/* Title & Metadata */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="font-black text-base text-[var(--color-espresso)] truncate">
+                              {cat.name}
+                            </h3>
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold shrink-0 uppercase tracking-wider ${
+                                cat.isActive
+                                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                  : "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                              }`}
+                            >
+                              {cat.isActive ? "Active" : "Inactive"}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                            {cat.description || "General rental category catalog"}
+                          </p>
+
+                          <div className="text-[11px] font-bold text-slate-400 mt-2.5">
+                            {(cat.count ?? 0) > 0 ? `${cat.count} Items Listed` : "Available in Catalog"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Card Actions (Activate/Deactivate & Edit) */}
+                      <div className="mt-5 pt-3.5 border-t border-[var(--color-border-subtle)] flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(cat)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-[var(--color-border)] text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
+                        >
+                          <Edit3 size={13} />
+                          <span>Edit</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleStatus(cat)}
+                          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                            cat.isActive
+                              ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800"
+                              : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800"
+                          }`}
+                        >
+                          <Power size={13} />
+                          <span>{cat.isActive ? "Deactivate" : "Activate"}</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-[var(--color-surface)] p-12 text-center rounded-3xl border border-dashed border-[var(--color-border)]">
+                  <div className="text-4xl mb-3">📁</div>
+                  <h3 className="font-bold text-base text-[var(--color-espresso)] mb-1">
+                    No categories found
+                  </h3>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto mb-5">
+                    {searchQuery
+                      ? `No category matching "${searchQuery}". Clear search or create a new one.`
+                      : "Your rental category catalog is currently empty."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openAddModal}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[var(--color-brand-primary)] text-white text-xs font-bold shadow-sm cursor-pointer"
+                  >
+                    <Plus size={16} /> Create Category
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* ======================================================== */}
+          {/* TAB 3: USERS MANAGEMENT                                  */}
+          {/* ======================================================== */}
           {activeTab === "users" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-x-auto shadow-sm w-full">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+              <div className="bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] overflow-x-auto shadow-xs w-full">
                 <table className="w-full text-left border-collapse min-w-[600px] text-sm">
                   <thead>
-                    <tr className="bg-[var(--color-surface-secondary)] border-b border-[var(--color-border)] text-xs text-slate-500 uppercase tracking-wider font-semibold">
-                      <th className="px-5 py-3">User</th>
-                      <th className="px-5 py-3">Role</th>
-                      <th className="px-5 py-3">Joined</th>
-                      <th className="px-5 py-3">Status</th>
-                      <th className="px-5 py-3">Actions</th>
+                    <tr className="bg-[var(--color-surface-secondary)] border-b border-[var(--color-border)] text-xs text-slate-400 uppercase tracking-wider font-black">
+                      <th className="px-6 py-4">User</th>
+                      <th className="px-6 py-4">Role</th>
+                      <th className="px-6 py-4">Joined</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {users
                       .filter(
                         (u) =>
-                          u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          u.email.toLowerCase().includes(searchQuery.toLowerCase())
+                          (u.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (u.email || "").toLowerCase().includes(searchQuery.toLowerCase())
                       )
-                      .map((user) => (
-                        <tr key={user.id} className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors">
-                          <td className="px-5 py-3.5">
-                            <div className="font-semibold text-[var(--color-espresso)]">{user.name}</div>
-                            <div className="text-xs text-slate-500">{user.email}</div>
-                          </td>
-                          <td className="px-5 py-3.5 text-slate-600 dark:text-slate-300">{user.role}</td>
-                          <td className="px-5 py-3.5 text-slate-600 dark:text-slate-300">{user.joined}</td>
-                          <td className="px-5 py-3.5">
-                            <span
-                              className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                                user.status === "Active"
-                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                  : "bg-red-500/10 text-red-600 dark:text-red-400"
-                              }`}
-                            >
-                              {user.status}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <button
-                              type="button"
-                              onClick={() => handleUserStatusToggle(user.id)}
-                              className="px-3 py-1 rounded-lg border border-[var(--color-border)] text-xs font-medium text-[var(--color-espresso)] hover:bg-[var(--color-surface-secondary)] transition-colors cursor-pointer"
-                            >
-                              {user.status === "Active" ? "Suspend" : "Activate"}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      .map((user) => {
+                        const userId = user._id || user.id;
+                        const joinedDate = user.createdAt
+                          ? new Date(user.createdAt).toLocaleDateString()
+                          : (user.joined || "Recent");
+                        return (
+                          <tr
+                            key={userId}
+                            className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-subtle)] transition-colors"
+                          >
+                            <td className="px-6 py-4">
+                              <div className="font-bold text-[var(--color-espresso)]">{user.name}</div>
+                              <div className="text-xs text-slate-400">{user.email} {user.phone ? `• ${user.phone}` : ""}</div>
+                            </td>
+                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-semibold">
+                              {user.location || "Member"}
+                            </td>
+                            <td className="px-6 py-4 text-slate-500 font-medium">{joinedDate}</td>
+                            <td className="px-6 py-4">
+                              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                                Active
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteUser(userId)}
+                                className="px-3 py-1 rounded-xl border border-rose-500/20 text-xs font-bold text-rose-600 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    {users.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-8 text-center text-xs text-slate-400">
+                          No registered users found in database.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
             </motion.div>
           )}
 
-          {/* LISTINGS TAB */}
+          {/* ======================================================== */}
+          {/* TAB 4: LISTINGS CONTROL (Live MongoDB)                   */}
+          {/* ======================================================== */}
           {activeTab === "listings" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-x-auto shadow-sm w-full">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+              <div className="bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] overflow-x-auto shadow-xs w-full">
                 <table className="w-full text-left border-collapse min-w-[600px] text-sm">
                   <thead>
-                    <tr className="bg-[var(--color-surface-secondary)] border-b border-[var(--color-border)] text-xs text-slate-500 uppercase tracking-wider font-semibold">
-                      <th className="px-5 py-3">Title</th>
-                      <th className="px-5 py-3">Owner</th>
-                      <th className="px-5 py-3">Category</th>
-                      <th className="px-5 py-3">Price</th>
-                      <th className="px-5 py-3">Status</th>
-                      <th className="px-5 py-3">Actions</th>
+                    <tr className="bg-[var(--color-surface-secondary)] border-b border-[var(--color-border)] text-xs text-slate-400 uppercase tracking-wider font-black">
+                      <th className="px-6 py-4">Title</th>
+                      <th className="px-6 py-4">Owner</th>
+                      <th className="px-6 py-4">Category</th>
+                      <th className="px-6 py-4">Price</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {listings
-                      .filter(
-                        (l) =>
-                          l.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          l.owner.toLowerCase().includes(searchQuery.toLowerCase())
-                      )
-                      .map((listing) => (
-                        <tr key={listing.id} className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors">
-                          <td className="px-5 py-3.5 font-semibold text-[var(--color-espresso)]">{listing.title}</td>
-                          <td className="px-5 py-3.5 text-slate-600 dark:text-slate-300">{listing.owner}</td>
-                          <td className="px-5 py-3.5 text-slate-600 dark:text-slate-300">{listing.category}</td>
-                          <td className="px-5 py-3.5 text-slate-600 dark:text-slate-300">{listing.price}</td>
-                          <td className="px-5 py-3.5">
-                            <span
-                              className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                                listing.status === "Approved"
-                                  ? "bg-emerald-500/10 text-emerald-600"
-                                  : listing.status === "Pending"
-                                  ? "bg-amber-500/10 text-amber-600"
-                                  : "bg-red-500/10 text-red-600"
-                              }`}
-                            >
-                              {listing.status}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <div className="flex gap-2">
-                              {listing.status !== "Approved" && (
+                      .filter((l) => {
+                        const title = l.title || "";
+                        const ownerName = typeof l.owner === "object" ? l.owner?.name || "" : l.owner || "";
+                        const q = searchQuery.toLowerCase();
+                        return title.toLowerCase().includes(q) || ownerName.toLowerCase().includes(q);
+                      })
+                      .map((listing) => {
+                        const listingId = listing._id || listing.id;
+                        const ownerName = typeof listing.owner === "object" ? listing.owner?.name || "User" : listing.owner || "User";
+                        const catName = typeof listing.category === "object" ? listing.category?.name || "General" : listing.category || "General";
+                        const catIcon = typeof listing.category === "object" ? listing.category?.icon : null;
+                        const priceStr = "₹" + Number(listing.rentalPricePerDay || 0).toLocaleString("en-IN") + "/day";
+                        const isLive = listing.isActive;
+
+                        return (
+                          <tr
+                            key={listingId}
+                            className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-subtle)] transition-colors"
+                          >
+                            <td className="px-6 py-4 font-bold text-[var(--color-espresso)]">{listing.title}</td>
+                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">{ownerName}</td>
+                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">
+                              <span className="inline-flex items-center gap-1">
+                                {catIcon && <span>{catIcon}</span>}
+                                <span>{catName}</span>
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-slate-700 dark:text-slate-200 font-black">{priceStr}</td>
+                            <td className="px-6 py-4">
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                  isLive
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                    : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                                }`}
+                              >
+                                {isLive ? "Active" : "Paused"}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-2.5">
                                 <button
                                   type="button"
-                                  onClick={() => handleListingAction(listing.id, "Approved")}
-                                  className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 text-xs font-semibold transition-colors cursor-pointer"
+                                  onClick={() => handleListingAction(listingId, isLive ? "Paused" : "Approved")}
+                                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs border ${
+                                    isLive
+                                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20"
+                                      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/25"
+                                  }`}
                                 >
-                                  Approve
+                                  <Check size={13} />
+                                  <span>{isLive ? "Pause" : "Activate"}</span>
                                 </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteListing(listing.id)}
-                                className="p-1 rounded-lg bg-red-500/10 text-red-600 hover:bg-red-500/20 transition-colors cursor-pointer"
-                                title="Delete"
-                              >
-                                <Trash2 size={15} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteListing(listingId)}
+                                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
+                                  title="Delete Listing from Database"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    {listings.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-8 text-center text-xs text-slate-400">
+                          No listings found in MongoDB database.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
             </motion.div>
           )}
 
-          {/* CATEGORIES TAB */}
-          {activeTab === "categories" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="flex justify-between items-center flex-wrap gap-3 mb-6">
-                <h3 className="font-bold text-lg text-[var(--color-espresso)]">Rental Categories</h3>
-                <button
-                  type="button"
-                  onClick={() => setShowAddCat((prev) => !prev)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--color-terracotta)] text-white text-xs font-bold shadow-sm hover:opacity-95 transition-opacity cursor-pointer"
-                >
-                  <Plus size={16} /> Add Category
-                </button>
-              </div>
-
-              <AnimatePresence>
-                {showAddCat && (
-                  <motion.form
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    onSubmit={handleAddCategory}
-                    className="bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)] mb-6 flex flex-wrap gap-3 items-center"
-                  >
-                    <input
-                      type="text"
-                      placeholder="Category Name"
-                      value={newCatName}
-                      onChange={(e) => setNewCatName(e.target.value)}
-                      className="flex-1 min-w-[180px] px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none"
-                    />
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold text-xs cursor-pointer hover:bg-emerald-700 transition-colors"
-                    >
-                      Save
-                    </button>
-                  </motion.form>
-                )}
-              </AnimatePresence>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {categories.map((cat) => (
-                  <div
-                    key={cat.id}
-                    className="bg-[var(--color-surface)] p-5 rounded-2xl border border-[var(--color-border)] flex items-center gap-4 shadow-sm"
-                  >
-                    <span className="text-3xl">{cat.icon}</span>
-                    <div>
-                      <div className="font-bold text-sm text-[var(--color-espresso)]">{cat.name}</div>
-                      <div className="text-xs text-slate-500">{cat.count} Items Listed</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-
-          {/* REPORTS TAB */}
+          {/* ======================================================== */}
+          {/* TAB 5: REPORTS & FLAGS                                   */}
+          {/* ======================================================== */}
           {activeTab === "reports" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-x-auto shadow-sm w-full">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+              <div className="bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] overflow-x-auto shadow-xs w-full">
                 <table className="w-full text-left border-collapse min-w-[600px] text-sm">
                   <thead>
-                    <tr className="bg-[var(--color-surface-secondary)] border-b border-[var(--color-border)] text-xs text-slate-500 uppercase tracking-wider font-semibold">
-                      <th className="px-5 py-3">Target Listing</th>
-                      <th className="px-5 py-3">Reported By</th>
-                      <th className="px-5 py-3">Reason</th>
-                      <th className="px-5 py-3">Date</th>
-                      <th className="px-5 py-3">Status</th>
-                      <th className="px-5 py-3">Action</th>
+                    <tr className="bg-[var(--color-surface-secondary)] border-b border-[var(--color-border)] text-xs text-slate-400 uppercase tracking-wider font-black">
+                      <th className="px-6 py-4">Target Listing</th>
+                      <th className="px-6 py-4">Reported By</th>
+                      <th className="px-6 py-4">Reason</th>
+                      <th className="px-6 py-4">Date</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {reports.map((rep) => (
-                      <tr key={rep.id} className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-hover)] transition-colors">
-                        <td className="px-5 py-3.5 font-semibold text-[var(--color-espresso)]">{rep.listing}</td>
-                        <td className="px-5 py-3.5 text-slate-600 dark:text-slate-300">{rep.reportedBy}</td>
-                        <td className="px-5 py-3.5 text-red-600 font-medium">{rep.reason}</td>
-                        <td className="px-5 py-3.5 text-slate-600 dark:text-slate-300">{rep.date}</td>
-                        <td className="px-5 py-3.5">
+                      <tr
+                        key={rep.id}
+                        className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-subtle)] transition-colors"
+                      >
+                        <td className="px-6 py-4 font-bold text-[var(--color-espresso)]">{rep.listing}</td>
+                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">{rep.reportedBy}</td>
+                        <td className="px-6 py-4 text-rose-600 font-semibold">{rep.reason}</td>
+                        <td className="px-6 py-4 text-slate-500">{rep.date}</td>
+                        <td className="px-6 py-4">
                           <span
-                            className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                            className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
                               rep.status === "Resolved"
-                                ? "bg-emerald-500/10 text-emerald-600"
-                                : "bg-red-500/10 text-red-600"
+                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
                             }`}
                           >
                             {rep.status}
                           </span>
                         </td>
-                        <td className="px-5 py-3.5">
+                        <td className="px-6 py-4">
                           {rep.status === "Open" && (
                             <button
                               type="button"
                               onClick={() => handleResolveReport(rep.id)}
-                              className="px-3 py-1 rounded-lg border border-[var(--color-border)] text-xs font-medium text-[var(--color-espresso)] hover:bg-[var(--color-surface-secondary)] transition-colors cursor-pointer"
+                              className="px-3 py-1 rounded-lg border border-[var(--color-border)] text-xs font-bold text-[var(--color-espresso)] hover:bg-[var(--color-surface-secondary)] transition-colors cursor-pointer"
                             >
                               Resolve
                             </button>
@@ -568,6 +1712,178 @@ export default function AdminDashboard() {
           )}
         </div>
       </main>
+
+      {/* ======================================================== */}
+      {/* ADD / EDIT CATEGORY MODAL WITH INTERACTIVE EMOJI PICKER   */}
+      {/* ======================================================== */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !modalSubmitting && setIsModalOpen(false)}
+              className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-lg bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] p-6 sm:p-7 shadow-2xl z-50 overflow-hidden max-h-[90vh] overflow-y-auto"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-[var(--color-border)] mb-5">
+                <div>
+                  <h3 className="text-lg font-black text-[var(--color-espresso)] tracking-tight">
+                    {editingCategory ? "Edit Category" : "Create New Category"}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {editingCategory
+                      ? "Update category details and emoji stored in MongoDB."
+                      : "Add a new category with an icon to store in the database."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  disabled={modalSubmitting}
+                  className="p-1.5 rounded-full text-slate-400 hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Error Message */}
+              {modalError && (
+                <div className="mb-4 p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0" />
+                  <span>{modalError}</span>
+                </div>
+              )}
+
+              {/* Form Content */}
+              <form onSubmit={handleCategorySubmit} className="space-y-5">
+                {/* Live Card Mock Preview */}
+                <div className="p-4 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border-subtle)] flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center text-3xl shadow-xs shrink-0">
+                    {modalFormData.icon || "📦"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Live Preview
+                    </span>
+                    <h4 className="font-bold text-sm text-[var(--color-espresso)] truncate">
+                      {modalFormData.name.trim() || "Category Name"}
+                    </h4>
+                    <p className="text-xs text-slate-500 truncate">
+                      {modalFormData.description.trim() || "Items and equipment description..."}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Name Input */}
+                <div>
+                  <label className="block text-xs font-bold text-[var(--color-espresso)] mb-1.5">
+                    Category Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Camera & Photography, Camping Equipment"
+                    value={modalFormData.name}
+                    onChange={(e) => setModalFormData((prev) => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 focus:border-[var(--color-brand-primary)] transition-all font-medium"
+                  />
+                </div>
+
+                {/* Description Input */}
+                <div>
+                  <label className="block text-xs font-bold text-[var(--color-espresso)] mb-1.5">
+                    Description <span className="text-slate-400 font-normal">(Optional)</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Short description for renters and hosts..."
+                    value={modalFormData.description}
+                    onChange={(e) => setModalFormData((prev) => ({ ...prev, description: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 focus:border-[var(--color-brand-primary)] transition-all font-medium resize-none"
+                  />
+                </div>
+
+                {/* INTERACTIVE EMOJI PICKER */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold text-[var(--color-espresso)]">
+                      Select Emoji / Icon <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-400 font-medium">Custom:</span>
+                      <input
+                        type="text"
+                        maxLength={4}
+                        placeholder="Emoji"
+                        value={modalFormData.icon}
+                        onChange={(e) => setModalFormData((prev) => ({ ...prev, icon: e.target.value }))}
+                        className="w-14 text-center px-1.5 py-1 text-base rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] focus:outline-none focus:border-[var(--color-brand-primary)]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Grid of Preset Emojis */}
+                  <div className="grid grid-cols-6 gap-2 p-2.5 bg-[var(--color-surface-subtle)] rounded-2xl border border-[var(--color-border-subtle)] max-h-40 overflow-y-auto">
+                    {PRESET_EMOJIS.map((item) => {
+                      const isSelected = modalFormData.icon === item.emoji;
+                      return (
+                        <button
+                          key={item.emoji}
+                          type="button"
+                          onClick={() => setModalFormData((prev) => ({ ...prev, icon: item.emoji }))}
+                          title={item.label}
+                          className={`h-11 rounded-xl text-2xl flex items-center justify-center transition-all cursor-pointer ${
+                            isSelected
+                              ? "bg-[var(--color-surface)] border-2 border-[var(--color-brand-primary)] shadow-sm scale-105"
+                              : "hover:bg-[var(--color-surface)] border border-transparent hover:border-slate-200"
+                          }`}
+                        >
+                          {item.emoji}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Form Buttons */}
+                <div className="pt-3 flex items-center justify-end gap-3 border-t border-[var(--color-border)]">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    disabled={modalSubmitting}
+                    className="px-4 py-2.5 rounded-full border border-[var(--color-border)] text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={modalSubmitting}
+                    className="px-6 py-2.5 rounded-full bg-[var(--color-brand-primary)] text-white text-xs font-bold shadow-md shadow-rose-500/25 hover:opacity-95 transition-opacity cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {modalSubmitting ? (
+                      <>
+                        <RefreshCw size={14} className="animate-spin" />
+                        <span>Saving to Database...</span>
+                      </>
+                    ) : (
+                      <span>{editingCategory ? "Update Category" : "Save Category"}</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

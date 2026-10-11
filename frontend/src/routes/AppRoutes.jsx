@@ -21,6 +21,7 @@ import ProfilePage from "../pages/user/ProfilePage";
 
 // Authenticated Owner / Host Pages
 import CreateListing from "../pages/user/owner/CreateListing";
+import EditListing from "../pages/user/owner/EditListing";
 import MyListingsPage from "../pages/user/owner/MyListingsPage";
 import OwnerDashboardPage from "../pages/user/owner/OwnerDashboardPage";
 
@@ -35,6 +36,19 @@ function AppRoutes() {
   return (
     <Routes>
       <Route element={<UserLayout />}>
+        {/* Protected Renter & Host Routes (Evaluated first so /listings/new and /listings/:id/edit precede /listings/:id) */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/listings/new" element={<CreateListing />} />
+          <Route path="/listings/:id/edit" element={<EditListing />} />
+          <Route path="/my-listings" element={<MyListingsPage />} />
+          <Route path="/owner/dashboard" element={<OwnerDashboardPage />} />
+          <Route path="/bookings" element={<MyBookingsPage />} />
+          <Route path="/wishlist" element={<WishlistPage />} />
+          <Route path="/messages" element={<MessagesPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+        </Route>
+
         {/* Public Marketplace Routes */}
         <Route path="/" element={<HomePage />} />
         <Route path="/explore" element={<ExplorePage />} />
@@ -43,20 +57,6 @@ function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-
-        {/* Protected Renter & Host Routes */}
-        <Route element={<ProtectedRoute />}>
-          <Route path="/bookings" element={<MyBookingsPage />} />
-          <Route path="/wishlist" element={<WishlistPage />} />
-          <Route path="/messages" element={<MessagesPage />} />
-          <Route path="/notifications" element={<NotificationsPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-
-          {/* Protected Owner / Host Routes */}
-          <Route path="/listings/new" element={<CreateListing />} />
-          <Route path="/my-listings" element={<MyListingsPage />} />
-          <Route path="/owner/dashboard" element={<OwnerDashboardPage />} />
-        </Route>
 
         <Route path="*" element={<NotFoundPage />} />
       </Route>

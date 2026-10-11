@@ -1,17 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Plus,
   Search,
   Eye,
+  Pencil,
   Trash2,
-  CheckCircle2,
   PauseCircle,
   PlayCircle,
   MapPin,
 } from "lucide-react";
 import api from "../../../utils/api";
-import { FEATURED_LISTINGS } from "../../../utils/mockData";
 import Container from "../../../components/Container";
 import {
   Button,
@@ -23,24 +22,22 @@ import {
 } from "../../../components/ui";
 
 export default function MyListingsPage() {
-  const location = useLocation();
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [successBanner, setSuccessBanner] = useState(location.state?.successMessage || "");
 
   useEffect(() => {
     async function fetchMyListings() {
       try {
         const res = await api.get("/listings/my-listings");
-        if (res.data?.listings && res.data.listings.length > 0) {
+        if (res.data?.listings) {
           setListings(res.data.listings);
         } else {
-          setListings(FEATURED_LISTINGS.slice(0, 3));
+          setListings([]);
         }
       } catch (err) {
-        setListings(FEATURED_LISTINGS.slice(0, 3));
+        setListings([]);
       } finally {
         setLoading(false);
       }
@@ -48,23 +45,41 @@ export default function MyListingsPage() {
     fetchMyListings();
   }, []);
 
-  const handleToggleAvailability = (id) => {
+  const handleToggleAvailability = async (id) => {
+    const current = listings.find((item) => (item._id || item.id) === id);
+    const nextAvailability = current?.availability === "available" ? "unavailable" : "available";
+    const nextActive = nextAvailability === "available";
+
+    // Optimistic UI update
     setListings((prev) =>
       prev.map((item) => {
         const itemId = item._id || item.id;
         if (itemId === id) {
-          const next = item.availability === "available" ? "unavailable" : "available";
-          return { ...item, availability: next };
+          return { ...item, availability: nextAvailability, isActive: nextActive };
         }
         return item;
       })
     );
+
+    try {
+      await api.patch(`/listings/${id}/status`, {
+        isActive: nextActive,
+        availability: nextAvailability,
+      });
+    } catch (err) {
+      console.error("Failed to toggle listing status:", err);
+    }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to delete this listing? This action cannot be undone.")) return;
-    setListings((prev) => prev.filter((item) => (item._id || item.id) !== id));
-    setSuccessBanner("Listing removed successfully.");
+    try {
+      await api.delete(`/listings/${id}`);
+      setListings((prev) => prev.filter((item) => (item._id || item.id) !== id));
+    } catch (err) {
+      console.error("Failed to delete listing on server:", err);
+      setListings((prev) => prev.filter((item) => (item._id || item.id) !== id));
+    }
   };
 
   const filtered = listings.filter((item) => {
@@ -100,14 +115,6 @@ export default function MyListingsPage() {
             </Button>
           </Link>
         </div>
-
-        {/* Success Banner */}
-        {successBanner && (
-          <div className="p-3.5 rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/25 text-sm font-medium flex items-center gap-2 mb-6">
-            <CheckCircle2 size={18} />
-            <span>{successBanner}</span>
-          </div>
-        )}
 
         {/* Filters Toolbar */}
         <div className="flex justify-between items-center flex-wrap gap-4 mb-6">
@@ -148,6 +155,14 @@ export default function MyListingsPage() {
           <div className="flex flex-col gap-4">
             {filtered.map((item) => {
               const itemId = item._id || item.id;
+              const catName =
+                typeof item.category === "object" && item.category !== null
+                  ? item.category.name
+                  : item.category;
+              const catIcon =
+                typeof item.category === "object" && item.category !== null
+                  ? item.category.icon
+                  : null;
               const img =
                 item.images && item.images.length > 0
                   ? item.images[0]
@@ -165,7 +180,8 @@ export default function MyListingsPage() {
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <Badge variant="secondary" size="sm">
-                          {item.category}
+                          {catIcon && <span className="mr-1">{catIcon}</span>}
+                          {catName}
                         </Badge>
                         <StatusBadge status={item.availability || "available"} size="sm" />
                       </div>
@@ -189,6 +205,12 @@ export default function MyListingsPage() {
                       <Link to={`/listings/${itemId}`}>
                         <Button variant="outline" size="sm" icon={Eye}>
                           View
+                        </Button>
+                      </Link>
+
+                      <Link to={`/listings/${itemId}/edit`}>
+                        <Button variant="outline" size="sm" icon={Pencil}>
+                          Edit
                         </Button>
                       </Link>
 

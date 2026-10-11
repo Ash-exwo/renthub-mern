@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams, Link } from "react-router-dom";
 import {
   Search,
   SlidersHorizontal,
   RotateCcw,
   MapPin,
-  Sparkles,
 } from "lucide-react";
 import api from "../../utils/api";
-import { FEATURED_LISTINGS, POPULAR_CATEGORIES } from "../../utils/mockData";
+import { getUser } from "../../utils/auth";
 import {
   Input,
   Button,
@@ -30,6 +29,7 @@ export default function ExplorePage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [listings, setListings] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
@@ -43,30 +43,41 @@ export default function ExplorePage() {
   const [sortBy, setSortBy] = useState("recommended");
 
   useEffect(() => {
-    async function loadListings() {
+    async function loadData() {
       try {
-        const res = await api.get("/listings");
-        if (res.data?.listings && res.data.listings.length > 0) {
-          const apiListings = res.data.listings.map((item) => ({
+        const [listingsRes, categoriesRes] = await Promise.allSettled([
+          api.get("/listings"),
+          api.get("/categories"),
+        ]);
+
+        if (listingsRes.status === "fulfilled" && Array.isArray(listingsRes.value.data?.listings)) {
+          const apiListings = listingsRes.value.data.listings.map((item) => ({
             ...item,
             rating: item.rating || 4.9,
             reviewsCount: item.reviewsCount || 16,
           }));
-          setListings([...apiListings, ...FEATURED_LISTINGS]);
+          setListings(apiListings);
         } else {
-          setListings(FEATURED_LISTINGS);
+          setListings([]);
         }
-      } catch (err) {
-        setListings(FEATURED_LISTINGS);
+
+        if (categoriesRes.status === "fulfilled" && categoriesRes.value.data?.categories) {
+          setCategories(categoriesRes.value.data.categories);
+        }
+      } catch {
+        setListings([]);
       } finally {
         setLoading(false);
       }
     }
-    loadListings();
+    loadData();
   }, []);
 
-  // Sync category from URL if changed from navbar or home
-  useEffect(() => {
+  // Sync category & location if URL params changed
+  const [prevParamsString, setPrevParamsString] = useState(() => searchParams.toString());
+  const currentParamsString = searchParams.toString();
+  if (prevParamsString !== currentParamsString) {
+    setPrevParamsString(currentParamsString);
     const cat = searchParams.get("category");
     if (cat !== null && cat !== selectedCategory) {
       setSelectedCategory(cat);
@@ -75,25 +86,54 @@ export default function ExplorePage() {
     if (loc !== null && loc !== selectedLocation) {
       setSelectedLocation(loc);
     }
-  }, [searchParams]);
+  }
+
+  const currentUser = getUser();
 
   // Filter & sort logic
   const filteredListings = useMemo(() => {
     return listings
       .filter((item) => {
+        // Exclude logged in user's own listings in Renter / Explore mode
+        const itemOwnerId =
+          typeof item.owner === "object" && item.owner !== null
+            ? item.owner._id || item.owner.id
+            : item.owner;
+        if (
+          currentUser &&
+          currentUser._id &&
+          itemOwnerId &&
+          itemOwnerId.toString() === currentUser._id.toString()
+        ) {
+          return false;
+        }
+
+        const catName =
+          typeof item.category === "object" && item.category !== null
+            ? item.category.name || ""
+            : item.category || "";
+        const catId =
+          typeof item.category === "object" && item.category !== null
+            ? item.category._id
+            : null;
+
         // Query search
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
           const matchTitle = item.title?.toLowerCase().includes(q);
           const matchDesc = item.description?.toLowerCase().includes(q);
-          const matchCat = item.category?.toLowerCase().includes(q);
+          const matchCat = catName.toLowerCase().includes(q);
           const matchLoc = item.location?.toLowerCase().includes(q);
           if (!matchTitle && !matchDesc && !matchCat && !matchLoc) return false;
         }
 
         // Category
         if (selectedCategory) {
-          if (item.category?.toLowerCase() !== selectedCategory.toLowerCase()) {
+          const sel = selectedCategory.toLowerCase();
+          const match =
+            catName.toLowerCase() === sel ||
+            (catId && catId.toString() === selectedCategory);
+          if (!match) {
             return false;
           }
         }
@@ -281,29 +321,27 @@ export default function ExplorePage() {
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
             <button
               type="button"
-              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full border text-xs font-bold whitespace-nowrap cursor-pointer transition-all duration-150 ${
-                selectedCategory === ""
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full border text-xs font-bold whitespace-nowrap cursor-pointer transition-all duration-150 ${selectedCategory === ""
                   ? "bg-[var(--color-brand-primary)] text-white border-[var(--color-brand-primary)] shadow-sm shadow-rose-500/20"
                   : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-espresso)] hover:border-[var(--color-brand-primary)] hover:text-[var(--color-brand-primary)] hover:bg-[var(--color-brand-primary-subtle)]"
-              }`}
+                }`}
               onClick={() => setSelectedCategory("")}
             >
               All Rentals
             </button>
-            {POPULAR_CATEGORIES.map((cat) => {
+            {categories.map((cat) => {
               const active = selectedCategory.toLowerCase() === cat.name.toLowerCase();
               return (
                 <button
-                  key={cat.id}
+                  key={cat._id || cat.id || cat.name}
                   type="button"
-                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full border text-xs font-bold whitespace-nowrap cursor-pointer transition-all duration-150 ${
-                    active
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full border text-xs font-bold whitespace-nowrap cursor-pointer transition-all duration-150 ${active
                       ? "bg-[var(--color-brand-primary)] text-white border-[var(--color-brand-primary)] shadow-sm shadow-rose-500/20"
                       : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-espresso)] hover:border-[var(--color-brand-primary)] hover:text-[var(--color-brand-primary)] hover:bg-[var(--color-brand-primary-subtle)]"
-                  }`}
+                    }`}
                   onClick={() => setSelectedCategory(active ? "" : cat.name)}
                 >
-                  <span>{cat.icon}</span>
+                  {cat.icon && <span>{cat.icon}</span>}
                   <span>{cat.name}</span>
                 </button>
               );
@@ -361,13 +399,32 @@ export default function ExplorePage() {
                 ))}
               </div>
             ) : filteredListings.length === 0 ? (
-              <EmptyState
-                icon={Search}
-                title="No rentals match your criteria"
-                description="Try loosening your price range, choosing a broader location, or clearing categories."
-                actionLabel="Reset All Filters"
-                onAction={handleResetFilters}
-              />
+              listings.length === 0 && currentUser ? (
+                <div className="text-center py-16 px-6 rounded-3xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xs max-w-lg mx-auto">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-[var(--color-brand-primary)] grid place-items-center mx-auto mb-3">
+                    <Search size={22} />
+                  </div>
+                  <h3 className="font-[var(--font-heading)] font-extrabold text-lg text-[var(--color-espresso)]">
+                    No Rentals from Other Hosts Yet
+                  </h3>
+                  <p className="text-sm text-[var(--color-muted-grey)] mt-1 mb-5 leading-relaxed">
+                    You are in <strong>Renter mode</strong> discovering items available from other hosts. Your own listings are active and can be managed under <strong>Owner Mode &rarr; My Listings</strong>.
+                  </p>
+                  <Link to="/my-listings">
+                    <Button variant="primary" size="sm">
+                      Go to My Listings
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <EmptyState
+                  icon={Search}
+                  title="No rentals match your criteria"
+                  description="Try loosening your price range, choosing a broader location, or clearing categories."
+                  actionLabel="Reset All Filters"
+                  onAction={handleResetFilters}
+                />
+              )
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredListings.map((item) => (

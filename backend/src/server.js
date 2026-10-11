@@ -1,15 +1,16 @@
+// server.js = start application
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const app = require('./app');
 
 dotenv.config();
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT;
 const MONGO_URI = process.env.MONGO_URI ;
 
 if (!MONGO_URI) {
     throw new Error("MONGO_URI is missing from .env");
-  }// Replace with your MongoDB Atlas URI if using cloud
+  }
 
 // Connect to MongoDB
 mongoose.connect(MONGO_URI)

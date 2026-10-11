@@ -1,3 +1,4 @@
+// User = person using RentHub
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 

@@ -18,67 +18,15 @@ import {
   Modal,
 } from "../../components/ui";
 
-const INITIAL_BOOKINGS = [
-  {
-    id: "BK-84920",
-    listingTitle: "Sony FX3 Cinema Camera + G-Master 24-70mm Kit",
-    listingImage:
-      "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=80",
-    category: "Cameras",
-    location: "Indiranagar, Bangalore",
-    ownerName: "Rahul Nair",
-    ownerPhone: "+91 98471 23456",
-    startDate: "2026-09-25",
-    endDate: "2026-09-28",
-    days: 3,
-    dailyRate: 2400,
-    deposit: 8000,
-    serviceFee: 360,
-    totalPrice: 15560,
-    status: "Upcoming",
-  },
-  {
-    id: "BK-73819",
-    listingTitle: "Panoramic Sea-View 2BHK Luxury Apartment",
-    listingImage:
-      "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&auto=format&fit=crop&q=80",
-    category: "Apartments",
-    location: "Marine Drive, Kochi",
-    ownerName: "Aswathy V",
-    ownerPhone: "+91 98460 11223",
-    startDate: "2026-09-20",
-    endDate: "2026-09-24",
-    days: 4,
-    dailyRate: 3200,
-    deposit: 5000,
-    serviceFee: 640,
-    totalPrice: 18440,
-    status: "Active",
-  },
-  {
-    id: "BK-62910",
-    listingTitle: "Royal Enfield Himalayan 450 (Kamet White)",
-    listingImage:
-      "https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800&auto=format&fit=crop&q=80",
-    category: "Vehicles",
-    location: "Koramangala, Bangalore",
-    ownerName: "Arjun Verma",
-    ownerPhone: "+91 94470 98765",
-    startDate: "2026-08-10",
-    endDate: "2026-08-14",
-    days: 4,
-    dailyRate: 1400,
-    deposit: 3000,
-    serviceFee: 280,
-    totalPrice: 8880,
-    status: "Completed",
-    reviewed: false,
-  },
-];
-
 export default function MyBookingsPage() {
   const [activeTab, setActiveTab] = useState("all");
-  const [bookings, setBookings] = useState(INITIAL_BOOKINGS);
+  const [bookings, setBookings] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("renthub_user_bookings") || "[]");
+    } catch {
+      return [];
+    }
+  });
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);

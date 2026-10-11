@@ -7,10 +7,10 @@ import {
   Clock,
   Sparkles,
   Zap,
+  Pencil,
 } from "lucide-react";
 import api from "../../utils/api";
-import { FEATURED_LISTINGS } from "../../utils/mockData";
-import { isLoggedIn } from "../../utils/auth";
+import { isLoggedIn, getUser } from "../../utils/auth";
 import {
   Button,
   Badge,
@@ -39,23 +39,26 @@ export default function ListingDetailPage() {
   const [endDate, setEndDate] = useState(nextWeek);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   useEffect(() => {
     async function fetchListing() {
       try {
-        const res = await api.get("/listings");
-        const found =
-          res.data?.listings?.find((item) => item._id === id || item.id === id) ||
-          FEATURED_LISTINGS.find((item) => item._id === id || item.id === id);
-
-        if (found) {
-          setListing(found);
-        } else {
-          setListing(FEATURED_LISTINGS[0]);
+        const res = await api.get(`/listings/${id}`);
+        if (res.data?.listing) {
+          setListing(res.data.listing);
+          return;
         }
+        setListing(null);
       } catch (err) {
-        const foundMock = FEATURED_LISTINGS.find((item) => item._id === id || item.id === id);
-        setListing(foundMock || FEATURED_LISTINGS[0]);
+        // Try fallback to list if user passed legacy or client ID
+        try {
+          const resAll = await api.get("/listings");
+          const found = resAll.data?.listings?.find((item) => (item._id || item.id) === id);
+          setListing(found || null);
+        } catch {
+          setListing(null);
+        }
       } finally {
         setLoading(false);
       }
@@ -101,6 +104,12 @@ export default function ListingDetailPage() {
   const serviceFee = Math.round(baseTotal * 0.05);
   const grandTotal = baseTotal + securityDeposit + serviceFee;
 
+  const hostName =
+    (typeof listing.owner === "object" && listing.owner?.name) ||
+    listing.ownerName ||
+    "Rental Host";
+  const hostInitial = hostName.charAt(0).toUpperCase();
+
   const handleBookingSubmit = () => {
     if (!loggedIn) {
       navigate("/login", {
@@ -108,12 +117,52 @@ export default function ListingDetailPage() {
       });
       return;
     }
+
+    const newBooking = {
+      id: `BK-${Math.floor(10000 + Math.random() * 90000)}`,
+      listingId: id,
+      listingTitle: listing.title,
+      listingImage: images[0],
+      category: categoryName,
+      location: listing.location,
+      ownerName: hostName,
+      startDate,
+      endDate,
+      days: rentalDays,
+      dailyRate,
+      deposit: securityDeposit,
+      serviceFee,
+      totalPrice: grandTotal,
+      status: "Upcoming",
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      const stored = JSON.parse(localStorage.getItem("renthub_user_bookings") || "[]");
+      localStorage.setItem("renthub_user_bookings", JSON.stringify([newBooking, ...stored]));
+    } catch (e) {
+      console.error("Failed to store booking:", e);
+    }
+
     setBookingSuccess(true);
   };
+
+  const categoryName =
+    typeof listing.category === "object" && listing.category !== null
+      ? listing.category.name
+      : listing.category;
+  const categoryIcon =
+    typeof listing.category === "object" && listing.category !== null
+      ? listing.category.icon
+      : null;
 
   const images = listing.images && listing.images.length > 0 ? listing.images : [
     "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1000&auto=format&fit=crop&q=80"
   ];
+
+  const user = getUser();
+  const ownerId = typeof listing.owner === "object" ? listing.owner?._id : listing.owner;
+  const isOwner = Boolean(user && ownerId && (user._id === ownerId || user.id === ownerId));
 
   return (
     <div className="py-6 pb-24">
@@ -124,27 +173,91 @@ export default function ListingDetailPage() {
           <span>/</span>
           <Link to="/explore" className="hover:text-[var(--color-brand-primary)]">Catalog</Link>
           <span>/</span>
-          <Link to={`/explore?category=${listing.category}`} className="hover:text-[var(--color-brand-primary)]">{listing.category}</Link>
+          <Link to={`/explore?category=${encodeURIComponent(categoryName || "")}`} className="hover:text-[var(--color-brand-primary)]">
+            {categoryName}
+          </Link>
           <span>/</span>
           <span className="text-[var(--color-espresso)] font-bold truncate max-w-xs">{listing.title}</span>
         </div>
 
-        {/* High-res Image Gallery Mosaic with Modern Curved Corners */}
-        <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-3 h-72 md:h-[440px] rounded-3xl overflow-hidden mb-8 bg-[var(--color-surface-secondary)] border border-[var(--color-border)] shadow-md">
-          <img src={images[0]} alt={listing.title} className="w-full h-full object-cover cursor-pointer hover:opacity-95 transition-opacity" />
-          <div className="hidden md:grid grid-rows-2 gap-3 h-full">
+        {/* High-res Image Gallery Mosaic with Perfectly Fitted Clean Grid */}
+        {images.length === 1 ? (
+          <div className="w-full h-72 md:h-[440px] rounded-2xl overflow-hidden mb-8 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-sm">
             <img
-              src={images[1] || images[0]}
-              alt="Thumbnail 1"
-              className="w-full h-full object-cover hover:opacity-95 transition-opacity"
-            />
-            <img
-              src={images[2] || images[0]}
-              alt="Thumbnail 2"
-              className="w-full h-full object-cover hover:opacity-95 transition-opacity"
+              src={images[0]}
+              alt={listing.title}
+              className="w-full h-full object-cover"
             />
           </div>
-        </div>
+        ) : images.length === 2 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 h-72 md:h-[440px] rounded-2xl overflow-hidden mb-8 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-sm">
+            <div className="w-full h-full overflow-hidden bg-[var(--color-surface)] cursor-pointer">
+              <img
+                src={images[0]}
+                alt={listing.title}
+                className="w-full h-full object-cover hover:opacity-95 transition-opacity duration-300"
+                onClick={() => setSelectedImageIndex(0)}
+              />
+            </div>
+            <div className="w-full h-full overflow-hidden bg-[var(--color-surface)] cursor-pointer">
+              <img
+                src={images[1]}
+                alt="Gallery photo 2"
+                className="w-full h-full object-cover hover:opacity-95 transition-opacity duration-300"
+                onClick={() => setSelectedImageIndex(1)}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 h-72 md:h-[440px] rounded-2xl overflow-hidden mb-8 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-sm">
+            {/* Primary / Selected Image (Takes 2 Columns) */}
+            <div className="md:col-span-2 w-full h-full overflow-hidden bg-[var(--color-surface)]">
+              <img
+                src={images[selectedImageIndex] || images[0]}
+                alt={listing.title}
+                className="w-full h-full object-cover cursor-pointer hover:opacity-95 transition-opacity duration-300"
+              />
+            </div>
+
+            {/* Right Column: Exactly 2 Equal Half-Height Stacked Thumbnails */}
+            <div className="hidden md:flex flex-col gap-2 h-full min-h-0">
+              <div
+                className={`flex-1 min-h-0 w-full overflow-hidden bg-[var(--color-surface)] cursor-pointer relative group transition-all ${
+                  selectedImageIndex === 1
+                    ? "ring-2 ring-inset ring-[var(--color-brand-primary)] opacity-100"
+                    : "opacity-90 hover:opacity-100"
+                }`}
+                onClick={() => setSelectedImageIndex(1)}
+              >
+                <img
+                  src={images[1]}
+                  alt="Gallery thumbnail 1"
+                  className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
+                />
+              </div>
+
+              <div
+                className={`flex-1 min-h-0 w-full overflow-hidden bg-[var(--color-surface)] cursor-pointer relative group transition-all ${
+                  selectedImageIndex === 2
+                    ? "ring-2 ring-inset ring-[var(--color-brand-primary)] opacity-100"
+                    : "opacity-90 hover:opacity-100"
+                }`}
+                onClick={() => setSelectedImageIndex(2)}
+              >
+                <img
+                  src={images[2]}
+                  alt="Gallery thumbnail 2"
+                  className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
+                />
+                {images.length > 3 && (
+                  <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center text-white font-bold text-sm">
+                    +{images.length - 2} photos
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main Content Layout Split */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_23rem] gap-8 lg:gap-12 items-start">
@@ -152,11 +265,19 @@ export default function ListingDetailPage() {
           <div className="flex flex-col gap-6">
             {/* Header section */}
             <div>
-              <div className="flex gap-2 items-center">
-                <span className="text-xs font-bold px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                  {listing.category}
+              <div className="flex gap-2 items-center flex-wrap">
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 inline-flex items-center gap-1.5">
+                  {categoryIcon && <span>{categoryIcon}</span>}
+                  <span>{categoryName}</span>
                 </span>
                 <StatusBadge status={listing.availability || "available"} />
+                {isOwner && (
+                  <Link to={`/listings/${id}/edit`} className="ml-auto">
+                    <Button variant="outline" size="sm" icon={Pencil}>
+                      Edit My Listing
+                    </Button>
+                  </Link>
+                )}
               </div>
 
               <h1 className="font-[var(--font-heading)] text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[var(--color-espresso)] my-3 tracking-tight">
@@ -178,11 +299,11 @@ export default function ListingDetailPage() {
             {/* Host info card */}
             <div className="flex items-center gap-4 p-4 sm:p-5 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-sm">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-600 to-cyan-500 text-white font-extrabold text-lg grid place-items-center shadow-md shrink-0">
-                {(listing.ownerName || "A").charAt(0).toUpperCase()}
+                {hostInitial}
               </div>
               <div>
                 <div className="font-extrabold text-base text-[var(--color-espresso)] flex items-center gap-2">
-                  <span>Hosted by {listing.ownerName || "Aswathy V"}</span>
+                  <span>Hosted by {hostName}</span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
                     Verified Host
                   </span>
@@ -231,12 +352,17 @@ export default function ListingDetailPage() {
             <div>
               <h2 className="text-xl font-extrabold text-[var(--color-espresso)] mb-3">Rental Rules & Escrow Terms</h2>
               <ul className="list-disc list-inside text-sm text-[var(--color-secondary-text)] leading-relaxed space-y-1.5 font-medium">
-                {(listing.rules || [
-                  "Digital government ID verification required at pickup/delivery",
-                  "Return in original clean and operational working order",
-                  "Extensions must be requested 12 hours before expiration via platform chat",
-                  "Security deposit automatically refunded to source account upon safe return",
-                ]).map((rule, idx) => (
+                {(Array.isArray(listing.rules)
+                  ? listing.rules
+                  : typeof listing.rules === "string" && listing.rules.trim()
+                  ? listing.rules.split("\n").filter(Boolean)
+                  : [
+                      "Digital government ID verification required at pickup/delivery",
+                      "Return in original clean and operational working order",
+                      "Extensions must be requested 12 hours before expiration via platform chat",
+                      "Security deposit automatically refunded to source account upon safe return",
+                    ]
+                ).map((rule, idx) => (
                   <li key={idx}>{rule}</li>
                 ))}
               </ul>
@@ -306,17 +432,27 @@ export default function ListingDetailPage() {
                 </div>
               </div>
 
-              <Button
-                variant="primary"
-                size="lg"
-                fullWidth
-                onClick={() => setBookingModalOpen(true)}
-              >
-                Reserve Rental
-              </Button>
+              {isOwner ? (
+                <Link to={`/listings/${id}/edit`}>
+                  <Button variant="outline" size="lg" fullWidth icon={Pencil}>
+                    You Own This Listing · Edit
+                  </Button>
+                </Link>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  onClick={() => setBookingModalOpen(true)}
+                >
+                  Reserve Rental
+                </Button>
+              )}
 
               <div className="text-center text-[11px] text-[var(--color-muted-grey)]">
-                You won't be charged yet. Host confirms in &lt; 2 hours.
+                {isOwner
+                  ? "This is your listing. Switch to Owner mode to manage availability."
+                  : "You won't be charged yet. Host confirms in < 2 hours."}
               </div>
             </div>
           </aside>
@@ -332,9 +468,17 @@ export default function ListingDetailPage() {
           </div>
         </div>
 
-        <Button variant="primary" size="md" onClick={() => setBookingModalOpen(true)}>
-          Reserve
-        </Button>
+        {isOwner ? (
+          <Link to={`/listings/${id}/edit`}>
+            <Button variant="outline" size="md" icon={Pencil}>
+              Edit Listing
+            </Button>
+          </Link>
+        ) : (
+          <Button variant="primary" size="md" onClick={() => setBookingModalOpen(true)}>
+            Reserve
+          </Button>
+        )}
       </div>
 
       {/* Booking Checkout & Confirmation Modal */}
@@ -356,7 +500,7 @@ export default function ListingDetailPage() {
               Your reservation is placed!
             </h3>
             <p className="text-sm text-[var(--color-secondary-text)] leading-relaxed mb-6">
-              Host <strong>{listing.ownerName || "Aswathy"}</strong> has received your reservation request for <strong>{listing.title}</strong> from {startDate} to {endDate}.
+              Host <strong>{hostName}</strong> has received your reservation request for <strong>{listing.title}</strong> from {startDate} to {endDate}.
             </p>
 
             <div className="flex gap-3 justify-center">

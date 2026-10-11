@@ -30,13 +30,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleDemoFill = () => {
-    setFormData({
-      email: "aswathy@gmail.com",
-      password: "password123",
-    });
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     const email = formData.email.trim();
@@ -95,18 +88,6 @@ export default function LoginPage() {
             <p className="text-sm text-[var(--color-secondary-text)]">
               Sign in to manage your rentals, bookings, and host inquiries.
             </p>
-          </div>
-
-          {/* Quick Demo Access Helper */}
-          <div className="mb-5 p-3 rounded-xl bg-[var(--color-surface-subtle)] border border-[var(--color-border)] flex items-center justify-between text-xs">
-            <span className="text-[var(--color-muted-grey)]">Testing demo credentials?</span>
-            <button
-              type="button"
-              onClick={handleDemoFill}
-              className="text-[var(--color-brand-primary)] font-bold hover:underline cursor-pointer"
-            >
-              Fill Demo User
-            </button>
           </div>
 
           {/* Feedback alert banner */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Search,
@@ -12,19 +12,20 @@ import {
   TrendingUp,
   Compass,
   Lock,
-  Layers,
   Award,
 } from "lucide-react";
 import api from "../../utils/api";
-import { POPULAR_CATEGORIES, FEATURED_LISTINGS } from "../../utils/mockData";
+import { getUser } from "../../utils/auth";
 import { Button, ListingCard } from "../../components/ui";
 import Container from "../../components/Container";
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const currentUser = getUser();
 
-  const [listings, setListings] = useState(FEATURED_LISTINGS);
+  const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState([]);
 
   // Search state
   const [searchLocation, setSearchLocation] = useState("");
@@ -32,24 +33,34 @@ export default function HomePage() {
   const [searchDuration, setSearchDuration] = useState("");
 
   useEffect(() => {
-    async function fetchListings() {
+    async function loadData() {
       try {
-        const res = await api.get("/listings");
-        if (res.data?.listings && res.data.listings.length > 0) {
-          const apiListings = res.data.listings.map((item) => ({
+        const [listingsRes, categoriesRes] = await Promise.allSettled([
+          api.get("/listings"),
+          api.get("/categories"),
+        ]);
+
+        if (listingsRes.status === "fulfilled" && Array.isArray(listingsRes.value.data?.listings)) {
+          const apiListings = listingsRes.value.data.listings.map((item) => ({
             ...item,
             rating: item.rating || 4.9,
             reviewsCount: item.reviewsCount || 14,
           }));
-          setListings([...apiListings, ...FEATURED_LISTINGS]);
+          setListings(apiListings);
+        } else {
+          setListings([]);
         }
-      } catch (err) {
-        setListings(FEATURED_LISTINGS);
+
+        if (categoriesRes.status === "fulfilled" && categoriesRes.value.data?.categories) {
+          setCategories(categoriesRes.value.data.categories);
+        }
+      } catch {
+        setListings([]);
       } finally {
         setLoading(false);
       }
     }
-    fetchListings();
+    loadData();
   }, []);
 
   const handleSearch = (e) => {
@@ -121,8 +132,8 @@ export default function HomePage() {
                   className="w-full bg-transparent border-none text-sm font-semibold text-[var(--color-espresso)] focus:outline-none cursor-pointer"
                 >
                   <option value="">All Categories</option>
-                  {POPULAR_CATEGORIES.map((cat) => (
-                    <option key={cat.id} value={cat.name}>
+                  {categories.map((cat) => (
+                    <option key={cat._id || cat.id || cat.name} value={cat.name}>
                       {cat.name}
                     </option>
                   ))}
@@ -193,23 +204,33 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-3 sm:gap-4">
-            {POPULAR_CATEGORIES.map((cat) => (
-              <Link
-                key={cat.id}
-                to={`/explore?category=${encodeURIComponent(cat.name)}`}
-                className="flex flex-col items-center justify-center text-center p-3.5 sm:p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group cursor-pointer"
-              >
-                <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 group-hover:bg-rose-50 dark:group-hover:bg-rose-950/30 transition-all duration-200">
-                  {cat.icon}
-                </div>
-                <span className="font-[var(--font-heading)] font-bold text-xs text-[var(--color-espresso)] group-hover:text-[var(--color-brand-primary)] transition-colors line-clamp-1">
-                  {cat.name}
-                </span>
-                <span className="text-[11px] text-[var(--color-muted-grey)] mt-0.5">{cat.count} items</span>
-              </Link>
-            ))}
-          </div>
+          {categories.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-3 sm:gap-4">
+              {categories.map((cat) => (
+                <Link
+                  key={cat._id || cat.id || cat.name}
+                  to={`/explore?category=${encodeURIComponent(cat.name)}`}
+                  className="flex flex-col items-center justify-center text-center p-3.5 sm:p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group cursor-pointer"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 group-hover:bg-rose-50 dark:group-hover:bg-rose-950/30 transition-all duration-200">
+                    {cat.icon || "📦"}
+                  </div>
+                  <span className="font-[var(--font-heading)] font-bold text-xs text-[var(--color-espresso)] group-hover:text-[var(--color-brand-primary)] transition-colors line-clamp-1">
+                    {cat.name}
+                  </span>
+                  {cat.description && (
+                    <span className="text-[10px] text-[var(--color-muted-grey)] mt-0.5 line-clamp-1">
+                      {cat.description}
+                    </span>
+                  )}
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 rounded-2xl border border-dashed border-[var(--color-border)] text-center text-sm text-[var(--color-muted-grey)]">
+              No categories published yet. Categories added by administrators will appear here.
+            </div>
+          )}
         </Container>
       </section>
 
@@ -234,11 +255,54 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-            {listings.slice(0, 6).map((item) => (
-              <ListingCard key={item._id || item.id} listing={item} />
-            ))}
-          </div>
+          {listings.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+              {listings.slice(0, 6).map((item) => (
+                <ListingCard key={item._id || item.id} listing={item} />
+              ))}
+            </div>
+          ) : currentUser ? (
+            <div className="text-center py-12 px-6 rounded-3xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xs max-w-lg mx-auto">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--color-brand-primary-subtle)] text-[var(--color-brand-primary)] grid place-items-center mx-auto mb-3">
+                <Sparkles size={24} />
+              </div>
+              <h3 className="font-[var(--font-heading)] font-extrabold text-lg text-[var(--color-espresso)]">
+                No Other Rentals Yet
+              </h3>
+              <p className="text-sm text-[var(--color-muted-grey)] mt-1 mb-5 leading-relaxed">
+                You are exploring rentals from other hosts. Your own listings are active and can be managed under My Listings.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <Link to="/my-listings">
+                  <Button variant="outline" size="sm">
+                    View My Listings
+                  </Button>
+                </Link>
+                <Link to="/listings/new">
+                  <Button variant="primary" size="sm">
+                    Add Another Listing
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12 px-6 rounded-3xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xs max-w-lg mx-auto">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--color-brand-primary-subtle)] text-[var(--color-brand-primary)] grid place-items-center mx-auto mb-3">
+                <Sparkles size={24} />
+              </div>
+              <h3 className="font-[var(--font-heading)] font-extrabold text-lg text-[var(--color-espresso)]">
+                No Listings Published Yet
+              </h3>
+              <p className="text-sm text-[var(--color-muted-grey)] mt-1 mb-5">
+                Be the first to list your gear, car, or equipment for rent in the community!
+              </p>
+              <Link to="/listings/new">
+                <Button variant="primary" size="sm">
+                  Create First Listing
+                </Button>
+              </Link>
+            </div>
+          )}
         </Container>
       </section>
 

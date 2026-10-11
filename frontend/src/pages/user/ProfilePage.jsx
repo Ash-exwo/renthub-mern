@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   User,
   Mail,
@@ -10,7 +10,9 @@ import {
   ShieldCheck,
   CheckCircle2,
   Save,
+  AlertCircle,
 } from "lucide-react";
+import api from "../../utils/api";
 import { getUser } from "../../utils/auth";
 import Container from "../../components/Container";
 import {
@@ -22,21 +24,43 @@ import {
 } from "../../components/ui";
 
 export default function ProfilePage() {
-  const user = getUser() || {
-    name: "Aswathy V",
-    email: "aswathy@gmail.com",
-    phone: "9846011223",
-    location: "Kochi, Kerala",
+  const initialUser = getUser() || {
+    name: "User",
+    email: "",
+    phone: "",
+    location: "",
   };
 
   const [activeTab, setActiveTab] = useState("personal");
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
 
-  // Form states
-  const [name, setName] = useState(user.name || "");
-  const [email, setEmail] = useState(user.email || "");
-  const [phone, setPhone] = useState(user.phone || "");
-  const [location, setLocation] = useState(user.location || "");
+  // Form states initialized from stored session
+  const [name, setName] = useState(initialUser.name || "");
+  const [email, setEmail] = useState(initialUser.email || "");
+  const [phone, setPhone] = useState(initialUser.phone || "");
+  const [location, setLocation] = useState(initialUser.location || "");
+
+  // Fetch live fresh profile from MongoDB on mount to guarantee registration phone & location prefill
+  useEffect(() => {
+    async function fetchLiveProfile() {
+      try {
+        const res = await api.get("/auth/me");
+        if (res.data?.user) {
+          const liveUser = res.data.user;
+          setName(liveUser.name || "");
+          setEmail(liveUser.email || "");
+          setPhone(liveUser.phone || "");
+          setLocation(liveUser.location || "");
+          localStorage.setItem("userData", JSON.stringify(liveUser));
+        }
+      } catch (err) {
+        console.error("Failed to load user profile from server:", err);
+      }
+    }
+    fetchLiveProfile();
+  }, []);
 
   // Notification toggles
   const [emailAlerts, setEmailAlerts] = useState(true);
@@ -50,12 +74,31 @@ export default function ProfilePage() {
     { id: "payments", label: "Payment Methods", icon: CreditCard },
   ];
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
-    const updated = { ...user, name, email, phone, location };
-    localStorage.setItem("userData", JSON.stringify(updated));
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    setSaveError("");
+    setSavingProfile(true);
+
+    try {
+      const res = await api.put("/auth/profile", {
+        name,
+        phone,
+        location,
+      });
+
+      if (res.data?.user) {
+        localStorage.setItem("userData", JSON.stringify(res.data.user));
+      }
+
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      const msg =
+        err.response?.data?.message || "Failed to update profile. Please try again.";
+      setSaveError(msg);
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   return (
@@ -128,7 +171,15 @@ export default function ProfilePage() {
             {saveSuccess && (
               <div className="p-4 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-sm font-semibold flex items-center gap-2 border border-emerald-500/25 shadow-sm">
                 <CheckCircle2 size={18} />
-                <span>Profile settings updated successfully.</span>
+                <span>Profile settings updated successfully in database.</span>
+              </div>
+            )}
+
+            {/* Error alert banner */}
+            {saveError && (
+              <div className="p-4 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 text-sm font-semibold flex items-center gap-2 border border-rose-500/25 shadow-sm">
+                <AlertCircle size={18} />
+                <span>{saveError}</span>
               </div>
             )}
 
@@ -146,14 +197,19 @@ export default function ProfilePage() {
                     required
                   />
 
-                  <Input
-                    label="Email Address"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    prefixIcon={Mail}
-                    required
-                  />
+                  <div>
+                    <Input
+                      label="Email Address"
+                      type="email"
+                      value={email}
+                      disabled
+                      prefixIcon={Mail}
+                      className="opacity-75 cursor-not-allowed"
+                    />
+                    <span className="text-[11px] text-[var(--color-muted-grey)] mt-1 block">
+                      Email address is linked to your login credentials and verified.
+                    </span>
+                  </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Input
@@ -161,6 +217,7 @@ export default function ProfilePage() {
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       prefixIcon={Phone}
+                      placeholder="10-digit phone number"
                       required
                     />
 
@@ -169,12 +226,19 @@ export default function ProfilePage() {
                       value={location}
                       onChange={(e) => setLocation(e.target.value)}
                       prefixIcon={MapPin}
+                      placeholder="City or Area (e.g. Kochi)"
                       required
                     />
                   </div>
 
                   <div className="mt-3">
-                    <Button type="submit" variant="primary" icon={Save}>
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      icon={Save}
+                      loading={savingProfile}
+                      disabled={savingProfile}
+                    >
                       Save Changes
                     </Button>
                   </div>
