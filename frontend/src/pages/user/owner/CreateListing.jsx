@@ -21,6 +21,7 @@ import {
   Card,
   ListingCard,
 } from "../../../components/ui";
+import ImageUploader from "../../../components/ImageUploader";
 
 const STEPS = [
   { id: 1, title: "Basic Info", sub: "Title & category" },
@@ -67,9 +68,8 @@ export default function CreateListing() {
     loadCategories();
   }, []);
 
-  // Photos state - Starts empty without forced apartment photos
+  // Photos state
   const [images, setImages] = useState([]);
-  const [newImageUrl, setNewImageUrl] = useState("");
   const [errors, setErrors] = useState({});
 
   const handleChange = (e) => {
@@ -78,79 +78,6 @@ export default function CreateListing() {
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: "" }));
     }
-  };
-
-  // Compress image on client side to keep Base64 lightweight (< 200KB) and prevent payload limits
-  const compressImage = (file, maxWidth = 1200, quality = 0.8) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result;
-        img.onload = () => {
-          let width = img.width;
-          let height = img.height;
-
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          }
-
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, width, height);
-
-          const compressedDataUrl = canvas.toDataURL("image/jpeg", quality);
-          resolve(compressedDataUrl);
-        };
-        img.onerror = (err) => reject(err);
-      };
-      reader.onerror = (err) => reject(err);
-    });
-  };
-
-  // 1. Local File Upload Handler with client-side compression
-  const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadError("");
-
-    if (!file.type.startsWith("image/")) {
-      setUploadError("Please select a valid image file (PNG, JPG, WEBP).");
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadError("Original image size must be under 10MB.");
-      return;
-    }
-
-    try {
-      const compressedDataUrl = await compressImage(file);
-      setImages((prev) => [...prev, compressedDataUrl]);
-      setErrors((prev) => ({ ...prev, images: "" }));
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    } catch (err) {
-      console.error("Compression error:", err);
-      setUploadError("Failed to process image file. Please try another image.");
-    }
-  };
-
-  // 2. URL addition handler
-  const handleAddImage = () => {
-    if (!newImageUrl.trim()) return;
-    setImages((prev) => [...prev, newImageUrl.trim()]);
-    setNewImageUrl("");
-    setErrors((prev) => ({ ...prev, images: "" }));
-  };
-
-  // 3. Remove photo
-  const handleRemoveImage = (index) => {
-    setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Validation
@@ -395,96 +322,19 @@ export default function CreateListing() {
                 <div>
                   <h2 className="text-lg font-bold text-[var(--color-espresso)]">Step 3: High-Resolution Photos</h2>
                   <p className="text-xs text-[var(--color-muted-grey)] mt-0.5">
-                    Upload photos directly from your computer or paste image links.
+                    Upload photos directly to Cloudinary CDN or paste image links. You can add up to 8 photos.
                   </p>
                 </div>
 
-                {/* Local File Upload Button + Hidden Input */}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="listing-photo-upload"
-                  />
-                  <label
-                    htmlFor="listing-photo-upload"
-                    className="cursor-pointer flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-dashed border-indigo-500/40 bg-indigo-500/5 hover:bg-indigo-50/10 text-indigo-600 dark:text-indigo-400 font-bold text-xs transition-all shadow-sm"
-                  >
-                    <Upload size={16} />
-                    <span>Upload Photo from Computer (Instant preview)</span>
-                  </label>
-                </div>
-
-                {uploadError && (
-                  <div className="text-xs text-red-500 font-medium">{uploadError}</div>
-                )}
-
-                {/* Or Paste URL */}
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Or paste an image web link (https://...)"
-                    value={newImageUrl}
-                    onChange={(e) => setNewImageUrl(e.target.value)}
-                    error={errors.images}
-                  />
-                  <Button variant="primary" onClick={handleAddImage} icon={Plus}>
-                    Add URL
-                  </Button>
-                </div>
-
-                {/* Added Photos Grid */}
-                <div>
-                  <div className="text-xs font-semibold text-[var(--color-espresso)] mb-2 flex items-center justify-between">
-                    <span>Added Photos ({images.length})</span>
-                    {images.length > 0 && (
-                      <span className="text-[11px] text-[var(--color-muted-grey)]">First photo is cover image</span>
-                    )}
-                  </div>
-
-                  {images.length === 0 ? (
-                    <div className="border border-dashed border-[var(--color-border)] rounded-2xl p-8 text-center bg-[var(--color-surface-secondary)]/50">
-                      <ImageIcon size={32} className="mx-auto text-[var(--color-muted-grey)] mb-2 opacity-50" />
-                      <p className="text-xs text-[var(--color-muted-grey)] font-medium">
-                        No photos added yet. Upload from your computer, paste an image link, or pick a preset above.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {images.map((img, idx) => (
-                        <div
-                          key={idx}
-                          className="relative rounded-xl overflow-hidden border border-[var(--color-border)] group bg-slate-900 aspect-video shadow-sm"
-                        >
-                          <img
-                            src={img}
-                            alt={`Preview ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.currentTarget.onerror = null;
-                              e.currentTarget.src = "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=60";
-                            }}
-                          />
-                          {idx === 0 && (
-                            <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[10px] font-bold shadow-sm">
-                              Cover Photo
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveImage(idx)}
-                            className="absolute top-2 right-2 bg-black/70 hover:bg-red-600 text-white rounded-full w-7 h-7 grid place-items-center cursor-pointer transition-colors shadow-sm"
-                            title="Remove photo"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <ImageUploader
+                  images={images}
+                  onChange={(newImages) => {
+                    setImages(newImages);
+                    setErrors((prev) => ({ ...prev, images: "" }));
+                  }}
+                  maxImages={8}
+                  error={errors.images}
+                />
               </div>
             )}
 

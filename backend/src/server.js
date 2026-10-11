@@ -1,9 +1,10 @@
 // server.js = start application
+const path = require('path');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const app = require('./app');
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+const app = require('./app');
 
 const PORT = process.env.PORT;
 const MONGO_URI = process.env.MONGO_URI ;
