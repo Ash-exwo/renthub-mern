@@ -93,6 +93,21 @@ Transforming RentHub from a simple listing board into a true peer-to-peer rental
 
 ---
 
+### 7. 🗓️ Interactive Availability Calendar & Schedule Engine
+- **Airbnb-Style Visual Date Picker (`AvailabilityCalendarPicker.jsx`):**
+  - Interactive month matrix with quick chevron navigation (`<` and `>`).
+  - Color-coded day states: available (emerald), booked reservations (rose with strikethrough), owner blackout/maintenance (purple), and past days (disabled).
+  - Two-click range selection (`Check-in` &rarr; `Check-out`) with live hover highlight ribbon.
+  - Active conflict interception: prevents selecting date ranges spanning across already reserved days.
+  - Fully responsive with desktop embedded section and mobile bottom-sheet modal.
+- **Host Listing Schedule & Management (`OwnerListingCalendarModal.jsx`):**
+  - Accessible via "Calendar" button on each item in `/my-listings` and "View Schedule" on `/dashboard`.
+  - Color-coded reservation timeline (🟡 Pending, 🟢 Confirmed, ⚪ Completed, 🟣 Blackout).
+  - One-click booking detail inspection with renter profile, contact info, notes, and direct Accept/Decline/Complete actions.
+  - Custom owner blackout date management (`POST /api/bookings/listing/:id/blocked-dates`) for item maintenance or personal use.
+
+---
+
 ## 🛠️ Technology Stack
 
 | Layer | Technologies |
@@ -200,7 +215,10 @@ rentHub/
 | `POST` | `/api/bookings` | Protected | Submit rental booking request (Overlap checked) |
 | `GET` | `/api/bookings/my-rentals` | Protected | View renter's active & past reservations |
 | `GET` | `/api/bookings/owner-requests` | Protected | View incoming booking requests (Host only) |
-| `GET` | `/api/bookings/listing/:id/booked-dates` | Public | Get unavailable date ranges for calendar |
+| `GET` | `/api/bookings/listing/:id/booked-dates` | Public | Get unavailable date ranges (bookings + blackouts) |
+| `GET` | `/api/bookings/listing/:id/owner-calendar` | Protected | Get full booking history & blackouts for host calendar |
+| `POST` | `/api/bookings/listing/:id/blocked-dates` | Protected | Add owner blackout dates (maintenance / personal) |
+| `DELETE` | `/api/bookings/listing/:id/blocked-dates/:dateId` | Protected | Remove owner blackout dates |
 | `GET` | `/api/bookings/:id` | Protected | Get single booking receipt details |
 | `PATCH` | `/api/bookings/:id/status` | Protected | State transition: confirm, reject, complete, or cancel |
 
