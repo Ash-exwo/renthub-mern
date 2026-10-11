@@ -108,6 +108,19 @@ Transforming RentHub from a simple listing board into a true peer-to-peer rental
 
 ---
 
+### 8. ☁️ Cloudinary Multi-Image Upload & CDN Management
+- **Cloudinary CDN Integration:** Direct stream uploads from in-memory Multer buffers directly to Cloudinary cloud infrastructure (`renthub/listings`).
+- **Drag-and-Drop Uploader (`ImageUploader.jsx`):**
+  - Interactive multi-file dropzone with drag-over visual cues.
+  - Automatic image optimization, WebP compression, and max-width scaling (1600px).
+  - Slot #1 designated as primary Cover Photo with prominent badge.
+  - Reorder controls (Move Left `<` / Move Right `>`) and one-click "Set as Cover".
+  - Async deletion from Cloudinary CDN when photos are removed.
+  - Fallback option to paste direct web URLs.
+- **Integrated Wizards:** Available on both the listing creation wizard (`/listings/new`) and edit portal (`/listings/:id/edit`).
+
+---
+
 ## 🛠️ Technology Stack
 
 | Layer | Technologies |
@@ -222,6 +235,12 @@ rentHub/
 | `GET` | `/api/bookings/:id` | Protected | Get single booking receipt details |
 | `PATCH` | `/api/bookings/:id/status` | Protected | State transition: confirm, reject, complete, or cancel |
 
+### ☁️ Media & Uploads
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/upload/images` | Protected | Upload up to 10 photos to Cloudinary CDN |
+| `DELETE` | `/api/upload/image` | Protected | Delete image asset from Cloudinary |
+
 ---
 
 ## ⚙️ Local Setup & Installation
@@ -230,6 +249,7 @@ rentHub/
 - **Node.js** (v18.0.0 or higher)
 - **npm** or **yarn**
 - **MongoDB Atlas** database cluster (or local MongoDB)
+- **Cloudinary Account** (for media hosting)
 
 ### 2. Backend Setup
 1. Open terminal and navigate to `backend`:
@@ -242,6 +262,9 @@ rentHub/
    PORT=5000
    MONGO_URI=your_mongodb_connection_string
    JWT_SECRET=your_secure_jwt_secret_key
+   CLOUDINARY_CLOUD_NAME=your_cloud_name
+   CLOUDINARY_API_KEY=your_api_key
+   CLOUDINARY_API_SECRET=your_api_secret
    ```
 3. Start the backend development server:
    ```bash
@@ -265,10 +288,12 @@ rentHub/
 
 ## 🔮 Upcoming Roadmap
 
-- [ ] **Cloudinary Multi-Photo Uploads:** Direct cloud image uploads from mobile and desktop with automated optimization.
-- [ ] **Renter-Owner In-App Messaging:** Real-time chat for handover coordination and item inquiries.
-- [ ] **Reviews & Ratings Engine:** Verified renter reviews and aggregate star ratings.
-- [ ] **Payment Gateway Integration:** Secure payment escrow (Razorpay / Stripe) capturing security deposits.
+- [x] **Cloudinary Multi-Photo Uploads:** Direct cloud image uploads from mobile and desktop with automated optimization.
+- [ ] **Payments and Deposits (Test Mode):** Track rental payments, deposit collection, refunds, and payment status separately from booking status.
+- [ ] **Notifications:** In-app notification center for approvals, rejections, cancellations, and new booking requests.
+- [ ] **Reviews & Ratings Engine:** Verified renter reviews and aggregate star ratings per completed booking.
+- [ ] **Location and Discovery:** Location-based filtering, distance/area search, and map integration.
+- [ ] **Production Readiness:** Rate limiting, security headers, validation audits, and deployment configuration.
 
 ---
 
