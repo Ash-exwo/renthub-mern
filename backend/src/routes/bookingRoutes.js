@@ -24,4 +24,9 @@ router.get("/:id", bookingController.getBookingById);
 // Update status (Owner: confirm/reject/complete, Renter: cancel)
 router.patch("/:id/status", bookingController.updateBookingStatus);
 
+// Owner listing calendar & blackout dates management
+router.get("/listing/:listingId/owner-calendar", bookingController.getOwnerListingCalendar);
+router.post("/listing/:listingId/blocked-dates", bookingController.addBlockedDates);
+router.delete("/listing/:listingId/blocked-dates/:dateId", bookingController.removeBlockedDate);
+
 module.exports = router;

@@ -9,6 +9,7 @@ import {
   PauseCircle,
   PlayCircle,
   MapPin,
+  CalendarDays,
 } from "lucide-react";
 import api from "../../../utils/api";
 import Container from "../../../components/Container";
@@ -20,12 +21,15 @@ import {
   Badge,
   EmptyState,
 } from "../../../components/ui";
+import OwnerListingCalendarModal from "../../../components/OwnerListingCalendarModal";
 
 export default function MyListingsPage() {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedCalendarListingId, setSelectedCalendarListingId] = useState(null);
+  const [calendarModalOpen, setCalendarModalOpen] = useState(false);
 
   useEffect(() => {
     async function fetchMyListings() {
@@ -215,6 +219,18 @@ export default function MyListingsPage() {
                       </Link>
 
                       <Button
+                        variant="outline"
+                        size="sm"
+                        icon={CalendarDays}
+                        onClick={() => {
+                          setSelectedCalendarListingId(itemId);
+                          setCalendarModalOpen(true);
+                        }}
+                      >
+                        Calendar
+                      </Button>
+
+                      <Button
                         variant={item.availability === "available" ? "ghost" : "secondary"}
                         size="sm"
                         icon={item.availability === "available" ? PauseCircle : PlayCircle}
@@ -240,6 +256,16 @@ export default function MyListingsPage() {
           </div>
         )}
       </Container>
+
+      {/* Owner Availability Calendar Modal */}
+      <OwnerListingCalendarModal
+        listingId={selectedCalendarListingId}
+        isOpen={calendarModalOpen}
+        onClose={() => {
+          setCalendarModalOpen(false);
+          setSelectedCalendarListingId(null);
+        }}
+      />
     </div>
   );
 }

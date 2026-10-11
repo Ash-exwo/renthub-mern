@@ -23,6 +23,7 @@ import {
   StatusBadge,
   Modal,
 } from "../../../components/ui";
+import OwnerListingCalendarModal from "../../../components/OwnerListingCalendarModal";
 
 export default function OwnerDashboardPage() {
   const user = getUser();
@@ -34,6 +35,8 @@ export default function OwnerDashboardPage() {
   const [error, setError] = useState("");
   const [actionLoadingId, setActionLoadingId] = useState(null);
   const [actionError, setActionError] = useState("");
+  const [selectedCalendarListingId, setSelectedCalendarListingId] = useState(null);
+  const [calendarModalOpen, setCalendarModalOpen] = useState(false);
 
   // Decline modal state
   const [declineModalOpen, setDeclineModalOpen] = useState(false);
@@ -337,12 +340,24 @@ export default function OwnerDashboardPage() {
                         Renter: <strong className="text-[var(--color-espresso)]">{renterName}</strong> ({renterEmail})
                       </div>
 
-                      <div className="flex items-center gap-1.5 text-xs text-[var(--color-secondary-text)] mt-1">
+                      <div className="flex items-center gap-1.5 text-xs text-[var(--color-secondary-text)] mt-1 flex-wrap">
                         <Calendar size={13} className="text-[var(--color-brand-primary)] shrink-0" />
                         <span>
                           {formatDate(req.startDate)} &rarr; {formatDate(req.endDate)} ({req.days}{" "}
                           {req.days === 1 ? "day" : "days"})
                         </span>
+                        {(req.listing?._id || req.listing) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCalendarListingId(req.listing?._id || req.listing);
+                              setCalendarModalOpen(true);
+                            }}
+                            className="ml-2 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer inline-flex items-center gap-1"
+                          >
+                            <span>· View Schedule</span>
+                          </button>
+                        )}
                       </div>
 
                       <div className="text-xs text-[var(--color-secondary-text)] mt-1">
@@ -459,6 +474,17 @@ export default function OwnerDashboardPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Owner Availability Calendar Modal */}
+      <OwnerListingCalendarModal
+        listingId={selectedCalendarListingId}
+        isOpen={calendarModalOpen}
+        onClose={() => {
+          setCalendarModalOpen(false);
+          setSelectedCalendarListingId(null);
+        }}
+        onBookingStatusChanged={() => fetchDashboardData(true)}
+      />
     </div>
   );
 }

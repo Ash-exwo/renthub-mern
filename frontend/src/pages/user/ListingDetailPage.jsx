@@ -15,6 +15,7 @@ import {
   Images,
   AlertCircle,
   Calendar,
+  CalendarDays,
   CalendarX,
 } from "lucide-react";
 import api from "../../utils/api";
@@ -28,6 +29,7 @@ import {
   Modal,
 } from "../../components/ui";
 import Container from "../../components/Container";
+import AvailabilityCalendarPicker from "../../components/AvailabilityCalendarPicker";
 
 export default function ListingDetailPage() {
   const { id } = useParams();
@@ -54,6 +56,7 @@ export default function ListingDetailPage() {
   const [bookedRanges, setBookedRanges] = useState([]);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [mobileCalendarOpen, setMobileCalendarOpen] = useState(false);
 
   const images =
     listing?.images && listing.images.length > 0
@@ -503,6 +506,41 @@ export default function ListingDetailPage() {
                 ))}
               </ul>
             </div>
+
+            {/* Interactive Availability Calendar Section */}
+            <div
+              className="flex flex-col gap-4 pt-4 border-t border-[var(--color-border-subtle)]"
+              id="availability-calendar-section"
+            >
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <h2 className="font-[var(--font-heading)] text-lg sm:text-xl font-bold text-[var(--color-espresso)] flex items-center gap-2">
+                    <CalendarDays className="text-indigo-600 dark:text-indigo-400" size={20} />
+                    <span>Availability &amp; Reservation Dates</span>
+                  </h2>
+                  <p className="text-xs text-[var(--color-muted-grey)] mt-0.5">
+                    Click an available start and end date to select your rental window. Booked and blackout days cannot be selected.
+                  </p>
+                </div>
+
+                {rentalDays > 0 && (
+                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                    {rentalDays} {rentalDays === 1 ? "day" : "days"} selected
+                  </span>
+                )}
+              </div>
+
+              <AvailabilityCalendarPicker
+                startDate={startDate}
+                endDate={endDate}
+                onChange={({ startDate: s, endDate: e }) => {
+                  setStartDate(s);
+                  setEndDate(e);
+                }}
+                bookedRanges={bookedRanges}
+                minDate={today}
+              />
+            </div>
           </div>
 
           {/* Right Column: Sticky Booking Card (Desktop) */}
@@ -513,32 +551,47 @@ export default function ListingDetailPage() {
                 <Rating score={listing.rating || 4.9} showCount={false} />
               </div>
 
-              {/* Date pickers */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted-grey)]">
-                    From Date
-                  </label>
-                  <input
-                    type="date"
-                    min={today}
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-xs font-semibold text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                  />
+              {/* Date pickers with calendar sync */}
+              <div className="p-3.5 rounded-2xl bg-[var(--color-surface-secondary)]/50 border border-[var(--color-border)] flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted-grey)] flex items-center gap-1">
+                    <CalendarDays size={12} className="text-indigo-600" />
+                    <span>Select Rental Dates</span>
+                  </span>
+                  <a
+                    href="#availability-calendar-section"
+                    className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    View Calendar &darr;
+                  </a>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted-grey)]">
-                    To Date
-                  </label>
-                  <input
-                    type="date"
-                    min={startDate}
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-xs font-semibold text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                  />
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted-grey)]">
+                      From Date
+                    </label>
+                    <input
+                      type="date"
+                      min={today}
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="p-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-xs font-semibold text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted-grey)]">
+                      To Date
+                    </label>
+                    <input
+                      type="date"
+                      min={startDate}
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="p-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-xs font-semibold text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -652,12 +705,17 @@ export default function ListingDetailPage() {
 
       {/* Mobile Sticky Bottom Bar */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-[var(--color-surface)]/95 backdrop-blur-xl border-t border-[var(--color-border)] px-5 py-3.5 flex items-center justify-between z-40 shadow-2xl">
-        <div>
+        <button
+          type="button"
+          onClick={() => setMobileCalendarOpen(true)}
+          className="text-left group cursor-pointer"
+        >
           <PriceDisplay price={dailyRate} period="day" size="md" />
-          <div className="text-xs text-[var(--color-muted-grey)] font-medium">
-            {rentalDays} day{rentalDays !== 1 ? "s" : ""} selected
+          <div className="text-xs text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1 group-hover:underline">
+            <CalendarDays size={12} />
+            <span>{rentalDays} day{rentalDays !== 1 ? "s" : ""} · Change dates</span>
           </div>
-        </div>
+        </button>
 
         {isOwner ? (
           <Link to={`/listings/${id}/edit`}>
@@ -676,6 +734,38 @@ export default function ListingDetailPage() {
           </Button>
         )}
       </div>
+
+      {/* Mobile Availability Calendar Modal */}
+      <Modal
+        isOpen={mobileCalendarOpen}
+        onClose={() => setMobileCalendarOpen(false)}
+        title="Select Rental Dates"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-[var(--color-muted-grey)]">
+            Tap an available start and end date to select your rental window:
+          </p>
+          <AvailabilityCalendarPicker
+            startDate={startDate}
+            endDate={endDate}
+            onChange={({ startDate: s, endDate: e }) => {
+              setStartDate(s);
+              setEndDate(e);
+            }}
+            bookedRanges={bookedRanges}
+            minDate={today}
+          />
+          <div className="flex justify-end pt-2">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setMobileCalendarOpen(false)}
+            >
+              Done
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Booking Checkout & Confirmation Modal */}
       <Modal

@@ -76,6 +76,30 @@ const listingSchema = new mongoose.Schema(
       default: true,
     },
 
+    // Owner-defined blackout / maintenance date ranges
+    blockedDates: [
+      {
+        startDate: {
+          type: Date,
+          required: true,
+        },
+        endDate: {
+          type: Date,
+          required: true,
+        },
+        reason: {
+          type: String,
+          default: "Maintenance / Personal Use",
+          trim: true,
+          maxlength: [200, "Reason cannot exceed 200 characters."],
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
     // Owner reference (User)
     owner: {
       type: mongoose.Schema.Types.ObjectId,

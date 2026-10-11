@@ -81,6 +81,24 @@ exports.createBooking = async (req, res) => {
       });
     }
 
+    // 4b. Check owner manual blackout / maintenance dates
+    const conflictingBlackout = (listing.blockedDates || []).find((b) => {
+      const bStart = normalizeDateToMidnight(b.startDate);
+      const bEnd = normalizeDateToMidnight(b.endDate);
+      return bStart < end && bEnd > start;
+    });
+
+    if (conflictingBlackout) {
+      return res.status(409).json({
+        message: `This item is unavailable during the requested dates (${conflictingBlackout.reason || "Scheduled Maintenance"}).`,
+        conflictingBlackout: {
+          startDate: conflictingBlackout.startDate,
+          endDate: conflictingBlackout.endDate,
+          reason: conflictingBlackout.reason,
+        },
+      });
+    }
+
     // 5. Server-side price calculation (Never trust client prices)
     const diffTime = end.getTime() - start.getTime();
     const days = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
@@ -346,7 +364,7 @@ exports.updateBookingStatus = async (req, res) => {
 
 /**
  * GET /api/bookings/listing/:listingId/booked-dates
- * Public/Renter helper: Returns all booked date intervals for a listing
+ * Public/Renter helper: Returns all booked and blackout date intervals for a listing
  * so calendar UI can visually disable unavailable dates.
  */
 exports.getBookedDatesForListing = async (req, res) => {
@@ -359,6 +377,7 @@ exports.getBookedDatesForListing = async (req, res) => {
 
     const today = normalizeDateToMidnight(new Date());
 
+    // 1. Fetch active bookings (pending & confirmed)
     const activeBookings = await Booking.find({
       listing: listingId,
       status: { $in: ["pending", "confirmed"] },
@@ -366,10 +385,29 @@ exports.getBookedDatesForListing = async (req, res) => {
     }).select("startDate endDate status");
 
     const bookedRanges = activeBookings.map((b) => ({
+      _id: b._id,
       startDate: b.startDate,
       endDate: b.endDate,
       status: b.status,
+      type: "booking",
     }));
+
+    // 2. Fetch owner-defined blackout / maintenance dates
+    const listing = await Listing.findById(listingId).select("blockedDates");
+    if (listing && Array.isArray(listing.blockedDates)) {
+      listing.blockedDates.forEach((b) => {
+        if (new Date(b.endDate) >= today) {
+          bookedRanges.push({
+            _id: b._id,
+            startDate: b.startDate,
+            endDate: b.endDate,
+            status: "blocked",
+            reason: b.reason || "Maintenance / Personal",
+            type: "blackout",
+          });
+        }
+      });
+    }
 
     return res.status(200).json({
       listingId,
@@ -383,3 +421,181 @@ exports.getBookedDatesForListing = async (req, res) => {
     });
   }
 };
+
+/**
+ * GET /api/bookings/listing/:listingId/owner-calendar
+ * Protected (Owner only): Returns full booking history and blackout schedule
+ * for a specific listing to render the host's interactive availability calendar.
+ */
+exports.getOwnerListingCalendar = async (req, res) => {
+  try {
+    const ownerId = req.user._id;
+    const { listingId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(listingId)) {
+      return res.status(400).json({ message: "Invalid listing ID format." });
+    }
+
+    const listing = await Listing.findById(listingId).populate("category", "name icon");
+    if (!listing) {
+      return res.status(404).json({ message: "Listing not found." });
+    }
+
+    if (listing.owner.toString() !== ownerId.toString()) {
+      return res.status(403).json({ message: "Access denied: you do not own this listing." });
+    }
+
+    const bookings = await Booking.find({ listing: listingId })
+      .populate("renter", "name email phone")
+      .sort({ startDate: 1 });
+
+    return res.status(200).json({
+      listing: {
+        _id: listing._id,
+        title: listing.title,
+        rentalPricePerDay: listing.rentalPricePerDay,
+        deposit: listing.deposit,
+        location: listing.location,
+        images: listing.images,
+        availability: listing.availability,
+        category: listing.category,
+      },
+      bookings,
+      blockedDates: listing.blockedDates || [],
+    });
+  } catch (error) {
+    console.error("getOwnerListingCalendar error:", error);
+    return res.status(500).json({
+      message: "An error occurred while fetching listing calendar.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * POST /api/bookings/listing/:listingId/blocked-dates
+ * Protected (Owner only): Adds an owner maintenance or personal use blackout date range.
+ */
+exports.addBlockedDates = async (req, res) => {
+  try {
+    const ownerId = req.user._id;
+    const { listingId } = req.params;
+    const { startDate, endDate, reason } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(listingId)) {
+      return res.status(400).json({ message: "Invalid listing ID format." });
+    }
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ message: "Start date and end date are required." });
+    }
+
+    const start = normalizeDateToMidnight(startDate);
+    const end = normalizeDateToMidnight(endDate);
+    const today = normalizeDateToMidnight(new Date());
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({ message: "Invalid date format provided." });
+    }
+
+    if (start < today) {
+      return res.status(400).json({ message: "Blackout start date cannot be in the past." });
+    }
+
+    if (end <= start) {
+      return res.status(400).json({ message: "End date must be after start date." });
+    }
+
+    const listing = await Listing.findById(listingId);
+    if (!listing) {
+      return res.status(404).json({ message: "Listing not found." });
+    }
+
+    if (listing.owner.toString() !== ownerId.toString()) {
+      return res.status(403).json({ message: "Access denied: you do not own this listing." });
+    }
+
+    // Check if conflicting with any existing confirmed booking
+    const conflictBooking = await Booking.findOne({
+      listing: listingId,
+      status: "confirmed",
+      startDate: { $lt: end },
+      endDate: { $gt: start },
+    });
+
+    if (conflictBooking) {
+      return res.status(409).json({
+        message: "Cannot block these dates because an active confirmed booking already exists in this period.",
+        conflictBooking: {
+          startDate: conflictBooking.startDate,
+          endDate: conflictBooking.endDate,
+        },
+      });
+    }
+
+    if (!listing.blockedDates) {
+      listing.blockedDates = [];
+    }
+
+    listing.blockedDates.push({
+      startDate: start,
+      endDate: end,
+      reason: reason?.trim() || "Maintenance / Personal Use",
+    });
+
+    await listing.save();
+
+    return res.status(201).json({
+      message: "Blackout dates added successfully.",
+      blockedDates: listing.blockedDates,
+    });
+  } catch (error) {
+    console.error("addBlockedDates error:", error);
+    return res.status(500).json({
+      message: "An error occurred while adding blackout dates.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * DELETE /api/bookings/listing/:listingId/blocked-dates/:dateId
+ * Protected (Owner only): Removes a custom owner blackout date range.
+ */
+exports.removeBlockedDate = async (req, res) => {
+  try {
+    const ownerId = req.user._id;
+    const { listingId, dateId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(listingId)) {
+      return res.status(400).json({ message: "Invalid listing ID format." });
+    }
+
+    const listing = await Listing.findById(listingId);
+    if (!listing) {
+      return res.status(404).json({ message: "Listing not found." });
+    }
+
+    if (listing.owner.toString() !== ownerId.toString()) {
+      return res.status(403).json({ message: "Access denied: you do not own this listing." });
+    }
+
+    listing.blockedDates = (listing.blockedDates || []).filter(
+      (b) => b._id.toString() !== dateId.toString()
+    );
+
+    await listing.save();
+
+    return res.status(200).json({
+      message: "Blackout date removed successfully.",
+      blockedDates: listing.blockedDates,
+    });
+  } catch (error) {
+    console.error("removeBlockedDate error:", error);
+    return res.status(500).json({
+      message: "An error occurred while removing blackout date.",
+      error: error.message,
+    });
+  }
+};
+
