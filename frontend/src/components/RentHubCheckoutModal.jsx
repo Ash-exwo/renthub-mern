@@ -31,7 +31,7 @@ export default function RentHubCheckoutModal({
   const [cardNumber, setCardNumber] = useState("4242 4242 4242 4242");
   const [cardExpiry, setCardExpiry] = useState("12/28");
   const [cardCvv, setCardCvv] = useState("123");
-  const [cardName, setCardName] = useState("Test Renter");
+  const [cardName, setCardName] = useState("RentHub User");
   const [upiId, setUpiId] = useState("renter@okaxis");
   const [selectedBank, setSelectedBank] = useState("HDFC Bank");
 
@@ -79,7 +79,7 @@ export default function RentHubCheckoutModal({
       if (activeTab === "card") {
         paymentDetails = {
           cardLast4: cardNumber.replace(/\s/g, "").slice(-4) || "4242",
-          cardBrand: "Visa Test",
+          cardBrand: "Visa",
         };
       } else if (activeTab === "upi") {
         paymentDetails = { upiId };
@@ -122,9 +122,6 @@ export default function RentHubCheckoutModal({
                 <h3 className="font-extrabold text-base sm:text-lg text-[var(--color-espresso)]">
                   RentHub Escrow Checkout
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
-                  TEST MODE
-                </span>
               </div>
               <p className="text-xs text-[var(--color-muted-grey)]">
                 256-Bit Encrypted Platform Escrow Protection
@@ -322,7 +319,7 @@ export default function RentHubCheckoutModal({
                         Credit / Debit Card
                       </span>
                       <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                        Pre-filled Sandbox Test Card
+                        Instant Verification
                       </span>
                     </div>
 
@@ -417,10 +414,10 @@ export default function RentHubCheckoutModal({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setUpiId("test@paytm")}
+                        onClick={() => setUpiId("renter@paytm")}
                         className="font-bold text-indigo-600 hover:underline"
                       >
-                        test@paytm
+                        renter@paytm
                       </button>
                     </div>
                   </>

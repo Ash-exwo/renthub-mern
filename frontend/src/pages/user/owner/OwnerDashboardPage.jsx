@@ -355,7 +355,7 @@ export default function OwnerDashboardPage() {
                             <CheckCircle2 size={12} /> Payout Released
                           </span>
                         )}
-                        {req.paymentStatus === "unpaid" && (
+                        {req.paymentStatus === "unpaid" && (req.status === "pending" || req.status === "confirmed") && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
                             <CreditCard size={12} /> Awaiting Escrow
                           </span>
