@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import Container from "./Container";
 import ThemeToggle from "./ThemeToggle";
+import NotificationDropdown from "./NotificationDropdown";
 import { isLoggedIn, getUser, logout } from "../utils/auth";
 
 export function Navbar() {
@@ -104,6 +105,7 @@ export function Navbar() {
                     <MessageSquare size={16} />
                     <span>Inquiries</span>
                   </Link>
+                  <NotificationDropdown />
 
                   <div className="w-px h-5 bg-[var(--color-border)]" />
 
@@ -143,22 +145,7 @@ export function Navbar() {
                     <MessageSquare size={16} />
                     <span className="hidden lg:inline">Messages</span>
                   </Link>
-                  <Link
-                    to="/notifications"
-                    className={`inline-flex items-center justify-center p-2 rounded-full relative transition-colors ${
-                      location.pathname === "/notifications"
-                        ? "text-[var(--color-brand-primary)] bg-[var(--color-brand-primary-subtle)]"
-                        : "text-[var(--color-secondary-text)] hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-hover)]"
-                    }`}
-                    aria-label="Notifications"
-                    title="Notifications"
-                  >
-                    <Bell size={17} />
-                    <span
-                      className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[var(--color-brand-primary)]"
-                      aria-hidden="true"
-                    />
-                  </Link>
+                  <NotificationDropdown />
 
                   <div className="w-px h-5 bg-[var(--color-border)]" />
 
@@ -314,7 +301,8 @@ export function Navbar() {
           </nav>
 
           {/* Mobile Right Controls */}
-          <div className="flex md:hidden items-center gap-2">
+          <div className="flex md:hidden items-center gap-1.5">
+            {loggedIn && <NotificationDropdown />}
             <ThemeToggle />
             <button
               type="button"

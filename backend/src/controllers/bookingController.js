@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Booking = require("../models/BookingModel");
 const Listing = require("../models/ListingModel");
+const { createNotification } = require("./notificationController");
 
 /**
  * Normalizes a date string/object to midnight (00:00:00.000)
@@ -130,6 +131,18 @@ exports.createBooking = async (req, res) => {
     const populatedBooking = await Booking.findById(booking._id)
       .populate("listing", "title images location rentalPricePerDay category")
       .populate("owner", "name email");
+
+    // Send in-app notification to host
+    createNotification({
+      recipient: listing.owner,
+      sender: renterId,
+      type: "booking_request",
+      title: "New Rental Request Received",
+      message: `${req.user?.name || "A renter"} submitted a booking request for "${listing.title}" (${days} ${days === 1 ? "day" : "days"}).`,
+      booking: booking._id,
+      listing: listing._id,
+      link: "/owner/dashboard",
+    }).catch(() => {});
 
     return res.status(201).json({
       message: "Booking request submitted successfully! Awaiting owner confirmation.",
@@ -360,6 +373,66 @@ exports.updateBookingStatus = async (req, res) => {
       .populate("listing", "title images location rentalPricePerDay category")
       .populate("renter", "name email phone")
       .populate("owner", "name email phone");
+
+    // Dispatch in-app notifications
+    if (nextStatus === "confirmed") {
+      createNotification({
+        recipient: booking.renter,
+        sender: booking.owner,
+        type: "booking_confirmed",
+        title: "Rental Request Approved! 🎉",
+        message: `Your booking for "${updated.listing?.title}" was accepted by ${updated.owner?.name || "the host"}. You can now pay & secure escrow.`,
+        booking: booking._id,
+        listing: updated.listing?._id,
+        link: "/bookings",
+      }).catch(() => {});
+    } else if (nextStatus === "rejected") {
+      createNotification({
+        recipient: booking.renter,
+        sender: booking.owner,
+        type: "booking_rejected",
+        title: "Rental Request Declined",
+        message: `Your booking for "${updated.listing?.title}" was declined by the host${reason ? `: "${reason}"` : "."}`,
+        booking: booking._id,
+        listing: updated.listing?._id,
+        link: "/bookings",
+      }).catch(() => {});
+    } else if (nextStatus === "cancelled") {
+      const recipient = isRenter ? booking.owner : booking.renter;
+      const sender = isRenter ? booking.renter : booking.owner;
+      const actorName = isRenter ? updated.renter?.name : updated.owner?.name;
+      createNotification({
+        recipient,
+        sender,
+        type: "booking_cancelled",
+        title: "Rental Booking Cancelled",
+        message: `${actorName || "The other party"} cancelled the booking for "${updated.listing?.title}"${reason ? `: "${reason}"` : "."}`,
+        booking: booking._id,
+        listing: updated.listing?._id,
+        link: isRenter ? "/owner/dashboard" : "/bookings",
+      }).catch(() => {});
+    } else if (nextStatus === "completed") {
+      createNotification({
+        recipient: booking.renter,
+        sender: booking.owner,
+        type: "rental_completed",
+        title: "Rental Completed & Deposit Returned! ✨",
+        message: `Your rental of "${updated.listing?.title}" has completed. Your security deposit has been returned!`,
+        booking: booking._id,
+        listing: updated.listing?._id,
+        link: "/bookings",
+      }).catch(() => {});
+      createNotification({
+        recipient: booking.owner,
+        sender: booking.renter,
+        type: "payout_released",
+        title: "Rental Payout Disbursed 💰",
+        message: `Rental payout for "${updated.listing?.title}" has been released to your host balance.`,
+        booking: booking._id,
+        listing: updated.listing?._id,
+        link: "/owner/dashboard",
+      }).catch(() => {});
+    }
 
     return res.status(200).json({
       message: `Booking successfully marked as ${nextStatus}.`,

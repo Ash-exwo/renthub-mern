@@ -134,6 +134,21 @@ Transforming RentHub from a simple listing board into a true peer-to-peer rental
 - **Itemized Digital Receipts (`PaymentReceiptModal.jsx`):**
   - Renter and host view of transaction reference IDs, date stamps, escrow custody indicators, and deposit return proofs.
 
+### 10. 🔔 Real-Time In-App Notification Center
+- **Event-Driven Lifecycle Triggers:**
+  - **Booking Requests:** Hosts receive immediate alerts when renters place a booking on their inventory (`/owner/dashboard`).
+  - **Status Transitions:** Renters are notified instantly upon booking approval, rejection, or completion (`/bookings`).
+  - **Escrow & Financial Ledger:** Real-time alerts when renter funds are locked in escrow, refunds are processed, or host payouts are released.
+  - **Cancellations:** Automatic notices to the counterpart whenever a cancellation or rescheduling occurs.
+- **Interactive Navbar Bell Dropdown (`NotificationDropdown.jsx`):**
+  - Live unread notification counter badge (e.g. `2 new`) with animated pulse.
+  - Auto-polling background synchronization (20s interval + window focus sync).
+  - Quick actions: mark individual items as read, mark all read, delete single notification.
+  - One-click navigation directly to relevant booking or host console.
+- **Dedicated Notification Center (`NotificationsPage.jsx`):**
+  - Filter tabs ("All", "Unread", "Bookings", "Payments").
+  - Relative time indicators ("just now", "10m ago", "2h ago"), visual category icons, and "Clear all" control.
+
 ---
 
 ## 🛠️ Technology Stack
@@ -159,6 +174,7 @@ rentHub/
 │   │   │   ├── bookingController.js     # Booking creation, overlap check & status lifecycle
 │   │   │   ├── categoryController.js    # Category CRUD & listing counts
 │   │   │   ├── listingController.js     # Listing CRUD, ownership & search filters
+│   │   │   ├── notificationController.js# Real-time alert notifications & unread counts
 │   │   │   └── paymentController.js     # Checkout session, escrow authorization & payout releases
 │   │   ├── middleware/
 │   │   │   ├── adminAuthMiddleware.js   # Admin JWT protection
@@ -168,6 +184,7 @@ rentHub/
 │   │   │   ├── BookingModel.js          # Rental booking & price schema
 │   │   │   ├── CategoryModel.js         # Category taxonomy schema
 │   │   │   ├── ListingModel.js          # Rental listing schema
+│   │   │   ├── NotificationModel.js     # Notification alerts & read status schema
 │   │   │   ├── PaymentModel.js          # Financial transaction & escrow ledger schema
 │   │   │   └── UserModel.js             # User accounts schema
 │   │   ├── routes/
@@ -176,6 +193,7 @@ rentHub/
 │   │   │   ├── bookingRoutes.js
 │   │   │   ├── categoryRoutes.js
 │   │   │   ├── listingRoutes.js
+│   │   │   ├── notificationRoutes.js
 │   │   │   └── paymentRoutes.js
 │   │   ├── app.js                       # Express app configuration & middleware
 │   │   └── server.js                    # Database connection & server bootstrap
@@ -188,6 +206,7 @@ rentHub/
 │   │   │   ├── Container.jsx            # Responsive layout wrapper
 │   │   │   ├── Footer.jsx
 │   │   │   ├── Navbar.jsx               # Navigation bar with role badges & links
+│   │   │   ├── NotificationDropdown.jsx # Real-time alerts popover with live unread counter
 │   │   │   ├── PaymentReceiptModal.jsx  # Itemized digital receipt & refund breakdown modal
 │   │   │   ├── ProtectedRoute.jsx       # Route guard for authenticated users
 │   │   │   └── RentHubCheckoutModal.jsx # Simulated Card, UPI & NetBanking escrow checkout
@@ -270,6 +289,16 @@ rentHub/
 | `POST` | `/api/payments/booking/:bookingId/refund` | Protected | Trigger escrow refund on cancellation or host rejection |
 | `POST` | `/api/payments/booking/:bookingId/release-payout` | Protected | Release host payout and return deposit upon rental completion |
 
+### 🔔 Notifications
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/notifications` | Protected | Fetch paginated notification history for authenticated user |
+| `GET` | `/api/notifications/unread-count` | Protected | Lightweight unread badge counter for navbar bell |
+| `PATCH` | `/api/notifications/:id/read` | Protected | Mark a single notification as read |
+| `PATCH` | `/api/notifications/mark-all-read` | Protected | Mark all user notifications as read |
+| `DELETE` | `/api/notifications/:id` | Protected | Delete a specific notification |
+| `DELETE` | `/api/notifications/clear-all` | Protected | Clear entire notification inbox for user |
+
 ---
 
 ## ⚙️ Local Setup & Installation
@@ -319,7 +348,7 @@ rentHub/
 
 - [x] **Cloudinary Multi-Photo Uploads:** Direct cloud image uploads from mobile and desktop with automated optimization.
 - [x] **Payments and Deposits (Test Mode):** Track rental payments, refundable security deposit escrow custody, automated refunds upon cancellation/rejection, and host payout release upon rental completion.
-- [ ] **Notifications:** In-app notification center for approvals, rejections, cancellations, and new booking requests.
+- [x] **Notifications:** In-app notification center with real-time navbar counter, categorized alerts for approvals, rejections, cancellations, and escrow receipts.
 - [ ] **Reviews & Ratings Engine:** Verified renter reviews and aggregate star ratings per completed booking.
 - [ ] **Location and Discovery:** Location-based filtering, distance/area search, and map integration.
 - [ ] **Production Readiness:** Rate limiting, security headers, validation audits, and deployment configuration.

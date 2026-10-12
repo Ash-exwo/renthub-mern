@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Booking = require("../models/BookingModel");
 const Payment = require("../models/PaymentModel");
 const Listing = require("../models/ListingModel");
+const { createNotification } = require("./notificationController");
 
 /**
  * POST /api/payments/checkout-session
@@ -142,6 +143,29 @@ exports.processPayment = async (req, res) => {
     booking.depositStatus = booking.deposit > 0 ? "held" : "unfunded";
     booking.payment = payment._id;
     await booking.save();
+
+    // Send in-app notification to host
+    createNotification({
+      recipient: booking.owner,
+      sender: booking.renter,
+      type: "payment_escrow_funded",
+      title: "Payment Secured in Escrow 🛡️",
+      message: `Renter deposited ₹${booking.totalPrice.toLocaleString("en-IN")} into platform escrow for "${booking.listing?.title}".`,
+      booking: booking._id,
+      listing: booking.listing?._id,
+      link: "/owner/dashboard",
+    }).catch(() => {});
+
+    // Confirmation notification to renter
+    createNotification({
+      recipient: booking.renter,
+      type: "payment_escrow_funded",
+      title: "Escrow Payment Confirmed",
+      message: `Your payment of ₹${booking.totalPrice.toLocaleString("en-IN")} for "${booking.listing?.title}" is secured in platform escrow.`,
+      booking: booking._id,
+      listing: booking.listing?._id,
+      link: "/bookings",
+    }).catch(() => {});
 
     return res.status(200).json({
       message: "Payment successfully authorized and held in platform escrow.",
