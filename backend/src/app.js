@@ -7,6 +7,7 @@ const listingRoutes = require('./routes/listingRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use('/api/listings', listingRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Global Error Handler (guarantees clean JSON response instead of HTML error pages)
 app.use((err, req, res, next) => {

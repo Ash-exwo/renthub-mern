@@ -344,6 +344,18 @@ exports.updateBookingStatus = async (req, res) => {
     booking.status = nextStatus;
     await booking.save();
 
+    // Automate Platform Escrow Lifecycle Transitions
+    try {
+      const { refundEscrowPayment, releaseHostPayoutAndRefundDeposit } = require("./paymentController");
+      if (["cancelled", "rejected"].includes(nextStatus)) {
+        await refundEscrowPayment(booking._id, reason || `Booking marked as ${nextStatus}`);
+      } else if (nextStatus === "completed") {
+        await releaseHostPayoutAndRefundDeposit(booking._id);
+      }
+    } catch (escrowErr) {
+      console.error("Escrow automated transition error:", escrowErr);
+    }
+
     const updated = await Booking.findById(booking._id)
       .populate("listing", "title images location rentalPricePerDay category")
       .populate("renter", "name email phone")

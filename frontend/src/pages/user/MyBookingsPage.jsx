@@ -9,6 +9,9 @@ import {
   ShieldCheck,
   Clock,
   AlertCircle,
+  CreditCard,
+  Receipt,
+  Lock,
 } from "lucide-react";
 import api from "../../utils/api";
 import Container from "../../components/Container";
@@ -20,6 +23,8 @@ import {
   EmptyState,
   Modal,
 } from "../../components/ui";
+import RentHubCheckoutModal from "../../components/RentHubCheckoutModal";
+import PaymentReceiptModal from "../../components/PaymentReceiptModal";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=60";
@@ -35,6 +40,9 @@ export default function MyBookingsPage() {
   const [bookingToCancel, setBookingToCancel] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
   const [actionError, setActionError] = useState("");
+
+  const [checkoutBookingId, setCheckoutBookingId] = useState(null);
+  const [receiptBookingId, setReceiptBookingId] = useState(null);
 
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
@@ -213,6 +221,27 @@ export default function MyBookingsPage() {
                             <Clock size={12} /> Awaiting host confirmation
                           </span>
                         )}
+                        {/* Escrow & Payment Indicator */}
+                        {b.paymentStatus === "escrow_held" && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                            <ShieldCheck size={12} /> Paid · Escrow Secured
+                          </span>
+                        )}
+                        {b.paymentStatus === "refunded" && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20">
+                            <Receipt size={12} /> Refund Issued
+                          </span>
+                        )}
+                        {b.paymentStatus === "payout_released" && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20">
+                            <CheckCircle2 size={12} /> Completed · Deposit Returned
+                          </span>
+                        )}
+                        {b.paymentStatus === "unpaid" && b.status !== "rejected" && b.status !== "cancelled" && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                            <CreditCard size={12} /> Payment Pending
+                          </span>
+                        )}
                       </div>
 
                       <h3 className="text-base sm:text-lg font-bold text-[var(--color-espresso)] mb-1">
@@ -264,12 +293,34 @@ export default function MyBookingsPage() {
                       </div>
 
                       <div className="flex gap-2 flex-wrap">
+                        {/* Escrow Payment or Receipt */}
+                        {b.paymentStatus === "unpaid" && b.status !== "rejected" && b.status !== "cancelled" ? (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            icon={CreditCard}
+                            onClick={() => setCheckoutBookingId(b._id)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                          >
+                            Pay & Secure Escrow
+                          </Button>
+                        ) : b.paymentStatus !== "unpaid" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            icon={Receipt}
+                            onClick={() => setReceiptBookingId(b._id)}
+                          >
+                            Escrow Receipt
+                          </Button>
+                        ) : null}
+
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => setSelectedBooking(b)}
                         >
-                          View Receipt
+                          Booking Details
                         </Button>
 
                         {(b.status === "pending" || b.status === "confirmed") && (
@@ -527,6 +578,23 @@ export default function MyBookingsPage() {
           </form>
         )}
       </Modal>
+
+      {/* Interactive RentHub Escrow Checkout Modal */}
+      <RentHubCheckoutModal
+        isOpen={Boolean(checkoutBookingId)}
+        onClose={() => setCheckoutBookingId(null)}
+        bookingId={checkoutBookingId}
+        onSuccess={() => {
+          fetchBookings();
+        }}
+      />
+
+      {/* Itemized Payment & Escrow Receipt Modal */}
+      <PaymentReceiptModal
+        isOpen={Boolean(receiptBookingId)}
+        onClose={() => setReceiptBookingId(null)}
+        bookingId={receiptBookingId}
+      />
     </div>
   );
 }

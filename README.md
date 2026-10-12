@@ -119,6 +119,21 @@ Transforming RentHub from a simple listing board into a true peer-to-peer rental
   - Fallback option to paste direct web URLs.
 - **Integrated Wizards:** Available on both the listing creation wizard (`/listings/new`) and edit portal (`/listings/:id/edit`).
 
+### 9. 💳 Payment Gateway, Escrow Custody & Security Deposits (Test Mode)
+- **Decoupled Financial Ledger:** Decouples financial status (`unpaid`, `escrow_held`, `refunded`, `payout_released`) from booking reservation lifecycle (`pending`, `confirmed`, `rejected`, `cancelled`, `completed`).
+- **Escrow Accounting & Protection:**
+  - Formula: $\text{Total Paid} = \text{Base Rental Charge} + \text{Refundable Security Deposit} + 5\% \text{ Platform Service Fee}$.
+  - Server-side price authority: prevents client-side price manipulation by calculating fees directly from listing daily rates and rental dates.
+  - Transparent Escrow Custody: funds remain locked in platform escrow during the active rental term to safeguard both parties.
+- **Automated Lifecycle Custody Transfers:**
+  - **Cancellation / Rejection:** 100% full refund automatically issued back to renter (`refunded_to_renter`).
+  - **Rental Completion:** Base rental earnings automatically disbursed to host (`released_to_host`), and refundable security deposit returned to renter (`depositStatus: refunded`).
+- **Interactive Checkout (`RentHubCheckoutModal.jsx`):**
+  - Instant sandbox checkout supporting Card (pre-filled test card), UPI (`success@okaxis`), and NetBanking.
+  - Live itemized fee breakdown, trust badges, and simulated 1.2s gateway authorization.
+- **Itemized Digital Receipts (`PaymentReceiptModal.jsx`):**
+  - Renter and host view of transaction reference IDs, date stamps, escrow custody indicators, and deposit return proofs.
+
 ---
 
 ## 🛠️ Technology Stack
@@ -143,7 +158,8 @@ rentHub/
 │   │   │   ├── authController.js        # User signup, login & profile
 │   │   │   ├── bookingController.js     # Booking creation, overlap check & status lifecycle
 │   │   │   ├── categoryController.js    # Category CRUD & listing counts
-│   │   │   └── listingController.js     # Listing CRUD, ownership & search filters
+│   │   │   ├── listingController.js     # Listing CRUD, ownership & search filters
+│   │   │   └── paymentController.js     # Checkout session, escrow authorization & payout releases
 │   │   ├── middleware/
 │   │   │   ├── adminAuthMiddleware.js   # Admin JWT protection
 │   │   │   └── userAuthMiddleware.js    # User JWT verification
@@ -152,13 +168,15 @@ rentHub/
 │   │   │   ├── BookingModel.js          # Rental booking & price schema
 │   │   │   ├── CategoryModel.js         # Category taxonomy schema
 │   │   │   ├── ListingModel.js          # Rental listing schema
+│   │   │   ├── PaymentModel.js          # Financial transaction & escrow ledger schema
 │   │   │   └── UserModel.js             # User accounts schema
 │   │   ├── routes/
 │   │   │   ├── adminRoutes.js
 │   │   │   ├── authRoutes.js
 │   │   │   ├── bookingRoutes.js
 │   │   │   ├── categoryRoutes.js
-│   │   │   └── listingRoutes.js
+│   │   │   ├── listingRoutes.js
+│   │   │   └── paymentRoutes.js
 │   │   ├── app.js                       # Express app configuration & middleware
 │   │   └── server.js                    # Database connection & server bootstrap
 │   └── package.json
@@ -170,7 +188,9 @@ rentHub/
 │   │   │   ├── Container.jsx            # Responsive layout wrapper
 │   │   │   ├── Footer.jsx
 │   │   │   ├── Navbar.jsx               # Navigation bar with role badges & links
-│   │   │   └── ProtectedRoute.jsx       # Route guard for authenticated users
+│   │   │   ├── PaymentReceiptModal.jsx  # Itemized digital receipt & refund breakdown modal
+│   │   │   ├── ProtectedRoute.jsx       # Route guard for authenticated users
+│   │   │   └── RentHubCheckoutModal.jsx # Simulated Card, UPI & NetBanking escrow checkout
 │   │   ├── pages/
 │   │   │   ├── admin/                   # Admin login & dashboard
 │   │   │   ├── user/
@@ -241,6 +261,15 @@ rentHub/
 | `POST` | `/api/upload/images` | Protected | Upload up to 10 photos to Cloudinary CDN |
 | `DELETE` | `/api/upload/image` | Protected | Delete image asset from Cloudinary |
 
+### 💳 Payments & Escrow Ledger
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/payments/checkout-session` | Protected | Compute server-calculated itemized bill for checkout |
+| `POST` | `/api/payments/process` | Protected | Process payment authorization & lock funds in platform escrow |
+| `GET` | `/api/payments/booking/:bookingId` | Protected | Fetch transaction ledger, escrow status & receipt for booking |
+| `POST` | `/api/payments/booking/:bookingId/refund` | Protected | Trigger escrow refund on cancellation or host rejection |
+| `POST` | `/api/payments/booking/:bookingId/release-payout` | Protected | Release host payout and return deposit upon rental completion |
+
 ---
 
 ## ⚙️ Local Setup & Installation
@@ -289,7 +318,7 @@ rentHub/
 ## 🔮 Upcoming Roadmap
 
 - [x] **Cloudinary Multi-Photo Uploads:** Direct cloud image uploads from mobile and desktop with automated optimization.
-- [ ] **Payments and Deposits (Test Mode):** Track rental payments, deposit collection, refunds, and payment status separately from booking status.
+- [x] **Payments and Deposits (Test Mode):** Track rental payments, refundable security deposit escrow custody, automated refunds upon cancellation/rejection, and host payout release upon rental completion.
 - [ ] **Notifications:** In-app notification center for approvals, rejections, cancellations, and new booking requests.
 - [ ] **Reviews & Ratings Engine:** Verified renter reviews and aggregate star ratings per completed booking.
 - [ ] **Location and Discovery:** Location-based filtering, distance/area search, and map integration.

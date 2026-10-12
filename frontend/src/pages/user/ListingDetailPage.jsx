@@ -17,6 +17,7 @@ import {
   Calendar,
   CalendarDays,
   CalendarX,
+  CreditCard,
 } from "lucide-react";
 import api from "../../utils/api";
 import { isLoggedIn, getUser } from "../../utils/auth";
@@ -30,6 +31,7 @@ import {
 } from "../../components/ui";
 import Container from "../../components/Container";
 import AvailabilityCalendarPicker from "../../components/AvailabilityCalendarPicker";
+import RentHubCheckoutModal from "../../components/RentHubCheckoutModal";
 
 export default function ListingDetailPage() {
   const { id } = useParams();
@@ -54,6 +56,7 @@ export default function ListingDetailPage() {
   const [bookingNotes, setBookingNotes] = useState("");
   const [createdBooking, setCreatedBooking] = useState(null);
   const [bookedRanges, setBookedRanges] = useState([]);
+  const [checkoutBookingId, setCheckoutBookingId] = useState(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [mobileCalendarOpen, setMobileCalendarOpen] = useState(false);
@@ -816,9 +819,21 @@ export default function ListingDetailPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 justify-center">
+            <div className="flex gap-2.5 justify-center flex-wrap">
+              <Button
+                variant="primary"
+                icon={CreditCard}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                onClick={() => {
+                  const bId = createdBooking?._id;
+                  setBookingModalOpen(false);
+                  setCheckoutBookingId(bId);
+                }}
+              >
+                Pay & Secure Escrow
+              </Button>
               <Link to="/bookings">
-                <Button variant="primary">View In My Rentals</Button>
+                <Button variant="secondary">View In My Rentals</Button>
               </Link>
               <Button
                 variant="outline"
@@ -1025,6 +1040,16 @@ export default function ListingDetailPage() {
           )}
         </div>
       )}
+
+      {/* Interactive RentHub Escrow Checkout Modal */}
+      <RentHubCheckoutModal
+        isOpen={Boolean(checkoutBookingId)}
+        onClose={() => setCheckoutBookingId(null)}
+        bookingId={checkoutBookingId}
+        onSuccess={() => {
+          navigate("/bookings");
+        }}
+      />
     </div>
   );
 }

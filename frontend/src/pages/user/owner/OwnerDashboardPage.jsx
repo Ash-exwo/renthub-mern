@@ -13,6 +13,9 @@ import {
   MessageSquare,
   CheckCircle2,
   RefreshCw,
+  ShieldCheck,
+  Receipt,
+  CreditCard,
 } from "lucide-react";
 import api from "../../../utils/api";
 import { getUser } from "../../../utils/auth";
@@ -24,6 +27,7 @@ import {
   Modal,
 } from "../../../components/ui";
 import OwnerListingCalendarModal from "../../../components/OwnerListingCalendarModal";
+import PaymentReceiptModal from "../../../components/PaymentReceiptModal";
 
 export default function OwnerDashboardPage() {
   const user = getUser();
@@ -37,6 +41,7 @@ export default function OwnerDashboardPage() {
   const [actionError, setActionError] = useState("");
   const [selectedCalendarListingId, setSelectedCalendarListingId] = useState(null);
   const [calendarModalOpen, setCalendarModalOpen] = useState(false);
+  const [receiptBookingId, setReceiptBookingId] = useState(null);
 
   // Decline modal state
   const [declineModalOpen, setDeclineModalOpen] = useState(false);
@@ -334,6 +339,27 @@ export default function OwnerDashboardPage() {
                         <span className="font-mono text-[11px] text-[var(--color-muted-grey)]">
                           REF: {req._id.slice(-6).toUpperCase()}
                         </span>
+                        {/* Escrow Status Indicator */}
+                        {req.paymentStatus === "escrow_held" && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                            <ShieldCheck size={12} /> Escrow Secured
+                          </span>
+                        )}
+                        {req.paymentStatus === "refunded" && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20">
+                            <Receipt size={12} /> Escrow Refunded
+                          </span>
+                        )}
+                        {req.paymentStatus === "payout_released" && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20">
+                            <CheckCircle2 size={12} /> Payout Released
+                          </span>
+                        )}
+                        {req.paymentStatus === "unpaid" && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                            <CreditCard size={12} /> Awaiting Escrow
+                          </span>
+                        )}
                       </div>
 
                       <div className="text-xs text-[var(--color-muted-grey)] mt-1">
@@ -371,7 +397,18 @@ export default function OwnerDashboardPage() {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {req.paymentStatus !== "unpaid" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          icon={Receipt}
+                          onClick={() => setReceiptBookingId(req._id)}
+                        >
+                          Receipt
+                        </Button>
+                      )}
+
                       {isPending && (
                         <>
                           <Button
@@ -484,6 +521,13 @@ export default function OwnerDashboardPage() {
           setSelectedCalendarListingId(null);
         }}
         onBookingStatusChanged={() => fetchDashboardData(true)}
+      />
+
+      {/* Escrow Payment Receipt Modal for Hosts */}
+      <PaymentReceiptModal
+        isOpen={Boolean(receiptBookingId)}
+        onClose={() => setReceiptBookingId(null)}
+        bookingId={receiptBookingId}
       />
     </div>
   );

@@ -79,6 +79,24 @@ const bookingSchema = new mongoose.Schema(
       index: true,
     },
 
+    // Payment & Escrow tracking
+    paymentStatus: {
+      type: String,
+      enum: ["unpaid", "escrow_held", "refunded", "payout_released"],
+      default: "unpaid",
+      index: true,
+    },
+    depositStatus: {
+      type: String,
+      enum: ["unfunded", "held", "refunded", "retained_for_damage"],
+      default: "unfunded",
+    },
+    payment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+      default: null,
+    },
+
     // Optional communication
     notes: {
       type: String,
