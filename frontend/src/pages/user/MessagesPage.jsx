@@ -32,13 +32,21 @@ export default function MessagesPage() {
   const targetListingId = searchParams.get("listingId");
   const targetOwnerId = searchParams.get("ownerId");
   const targetConvId = searchParams.get("conversationId");
-  const initialTab = searchParams.get("tab") || "renting";
+  const initialTab = (() => {
+    const fromQuery = searchParams.get("tab");
+    if (fromQuery === "hosting" || fromQuery === "renting") return fromQuery;
+    try {
+      const fromStorage = localStorage.getItem("renthub_chat_active_tab");
+      if (fromStorage === "hosting" || fromStorage === "renting") return fromStorage;
+    } catch {}
+    return "renting";
+  })();
 
   // State: Tab ("renting" vs "hosting")
-  const [activeTab, setActiveTab] = useState(initialTab === "hosting" ? "hosting" : "renting");
+  const [activeTab, setActiveTab] = useState(initialTab);
 
   // State: Conversations and active thread
-  const [conversations, setConversations] = useState([]);
+  const [allConversations, setAllConversations] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [activeId, setActiveId] = useState(targetConvId || null);
   const [activeConv, setActiveConv] = useState(null);
@@ -50,15 +58,19 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // State: Unread counters for both tabs
-  const [tabStats, setTabStats] = useState({ rentingUnread: 0, hostingUnread: 0 });
-
   // State: Safety guidelines modal
   const [safetyModalOpen, setSafetyModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
   const isInitialMount = useRef(true);
+  const hasInitializedParams = useRef(false);
+
+  // Refs to avoid circular dependency loops
+  const activeIdRef = useRef(activeId);
+  activeIdRef.current = activeId;
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
 
   // Scroll to bottom of message thread
   const scrollToBottom = (behavior = "smooth") => {
@@ -75,157 +87,154 @@ export default function MessagesPage() {
     } catch {}
   }, []);
 
-  // Fetch conversations for the active tab and calculate tab stats
-  const fetchConversations = useCallback(
-    async (tabToFetch = activeTab, shouldAutoSelect = false) => {
-      try {
-        const [currentRes, allRes] = await Promise.all([
-          api.get(`/messages/conversations?role=${tabToFetch}`),
-          api.get(`/messages/conversations`),
-        ]);
+  // Filter conversations strictly belonging to the currently active tab
+  const currentTabConversations = useMemo(() => {
+    return allConversations.filter((c) => c.role === activeTab);
+  }, [allConversations, activeTab]);
 
-        if (currentRes.data?.success) {
-          // Strictly filter so only conversations matching tabToFetch are present
-          const list = (currentRes.data.conversations || []).filter((c) => c.role === tabToFetch);
-          setConversations(list);
+  // Aggregate unread counters for both tabs
+  const tabStats = useMemo(() => {
+    const rentingUnread = allConversations
+      .filter((c) => c.role === "renting")
+      .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+    const hostingUnread = allConversations
+      .filter((c) => c.role === "hosting")
+      .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+    return { rentingUnread, hostingUnread };
+  }, [allConversations]);
 
-          // Auto-select on desktop if requested, or if current activeId is not in this tab's list
-          if (shouldAutoSelect || !activeId || !list.some((c) => (c._id || c.id) === activeId)) {
-            if (list.length > 0 && window.innerWidth >= 768) {
-              const firstId = list[0]._id || list[0].id;
-              setActiveId(firstId);
-            } else if (list.length === 0) {
-              setActiveId(null);
-              setActiveConv(null);
-              setMessages([]);
-            }
-          }
-        }
-
-        if (allRes.data?.conversations) {
-          const allList = allRes.data.conversations;
-          const rentingCount = allList
-            .filter((c) => c.role === "renting")
-            .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-          const hostingCount = allList
-            .filter((c) => c.role === "hosting")
-            .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-
-          setTabStats({
-            rentingUnread: rentingCount,
-            hostingUnread: hostingCount,
-          });
-        }
-      } catch (err) {
-        console.error("Failed to load conversations:", err);
-      } finally {
-        setLoadingConversations(false);
+  // Single unified fetch for all conversations (both roles)
+  const fetchConversations = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoadingConversations(true);
+    try {
+      const res = await api.get("/messages/conversations");
+      if (res.data?.success) {
+        setAllConversations(res.data.conversations || []);
       }
-    },
-    [activeTab, activeId]
-  );
+    } catch (err) {
+      console.error("Failed to load conversations:", err);
+    } finally {
+      if (!isBackground) setLoadingConversations(false);
+    }
+  }, []);
 
   // Fetch messages for active conversation
-  const fetchMessages = useCallback(
-    async (convId, isBackground = false) => {
-      if (!convId) return;
-      if (!isBackground) setLoadingMessages(true);
+  const fetchMessages = useCallback(async (convId, isBackground = false) => {
+    if (!convId) return;
+    if (!isBackground) setLoadingMessages(true);
 
-      try {
-        const res = await api.get(`/messages/conversation/${convId}`);
-        if (res.data?.success && res.data.conversation) {
-          const fetchedConv = res.data.conversation;
-          // Strictly ensure this conversation matches the currently active tab
-          if (fetchedConv.role === activeTab) {
-            setMessages(res.data.messages || []);
-            setActiveConv(fetchedConv);
-          } else {
-            // Mismatched tab: reset active thread
-            setActiveId(null);
-            setActiveConv(null);
-            setMessages([]);
-          }
+    try {
+      const res = await api.get(`/messages/conversation/${convId}`);
+      if (res.data?.success && res.data.conversation) {
+        // Guard against race conditions if active conversation changed while fetching
+        if (activeIdRef.current === convId) {
+          setMessages(res.data.messages || []);
+          setActiveConv(res.data.conversation);
         }
-      } catch (err) {
-        console.error("Failed to load messages:", err);
-      } finally {
-        if (!isBackground) setLoadingMessages(false);
       }
-    },
-    [activeTab]
-  );
+    } catch (err) {
+      console.error("Failed to load messages:", err);
+    } finally {
+      if (!isBackground && activeIdRef.current === convId) {
+        setLoadingMessages(false);
+      }
+    }
+  }, []);
 
-  // Initialize from query parameters (bookingId or listingId)
+  // Auto-select conversation on desktop when tab changes or conversations load
+  useEffect(() => {
+    if (window.innerWidth < 768) return;
+
+    if (currentTabConversations.length > 0) {
+      const exists = currentTabConversations.some((c) => (c._id || c.id) === activeId);
+      if (!exists) {
+        const firstId = currentTabConversations[0]._id || currentTabConversations[0].id;
+        setActiveId(firstId);
+      }
+    } else {
+      setActiveId(null);
+      setActiveConv(null);
+      setMessages([]);
+    }
+  }, [activeTab, currentTabConversations]);
+
+  // Load messages whenever activeId changes
+  useEffect(() => {
+    if (activeId) {
+      fetchMessages(activeId, false);
+    }
+  }, [activeId, fetchMessages]);
+
+  // Initialize from query parameters (bookingId or listingId) once on mount
   useEffect(() => {
     if (!isLoggedIn()) {
       navigate("/login?redirect=/messages");
       return;
     }
 
+    if (hasInitializedParams.current) return;
+    if (!targetBookingId && !targetListingId && !targetConvId) return;
+    hasInitializedParams.current = true;
+
     async function initFromParams() {
-      if (targetBookingId || targetListingId || targetConvId) {
-        try {
-          if (targetConvId) {
-            setActiveId(targetConvId);
-            return;
-          }
-
-          const initRes = await api.post("/messages/conversations/init", {
-            bookingId: targetBookingId || undefined,
-            listingId: targetListingId || undefined,
-            ownerId: targetOwnerId || undefined,
-          });
-
-          if (initRes.data?.success && initRes.data.conversation) {
-            const conv = initRes.data.conversation;
-            const targetRole = conv.role || "renting";
-            setActiveTab(targetRole);
-            setActiveId(conv._id || conv.id);
-            fetchConversations(targetRole, false);
-          }
-        } catch (err) {
-          console.error("Error auto-initializing conversation:", err);
+      try {
+        if (targetConvId) {
+          setActiveId(targetConvId);
+          return;
         }
+
+        const initRes = await api.post("/messages/conversations/init", {
+          bookingId: targetBookingId || undefined,
+          listingId: targetListingId || undefined,
+          ownerId: targetOwnerId || undefined,
+        });
+
+        if (initRes.data?.success && initRes.data.conversation) {
+          const conv = initRes.data.conversation;
+          const targetRole = conv.role || "renting";
+          setActiveTab(targetRole);
+          try {
+            localStorage.setItem("renthub_chat_active_tab", targetRole);
+          } catch {}
+          setActiveId(conv._id || conv.id);
+          fetchConversations(false);
+
+          setSearchParams(
+            (prev) => {
+              const p = new URLSearchParams(prev);
+              p.delete("bookingId");
+              p.delete("listingId");
+              p.delete("ownerId");
+              p.delete("conversationId");
+              p.set("tab", targetRole);
+              return p;
+            },
+            { replace: true }
+          );
+        }
+      } catch (err) {
+        console.error("Error auto-initializing conversation:", err);
       }
     }
 
     initFromParams();
-  }, [targetBookingId, targetListingId, targetConvId, targetOwnerId, navigate, fetchConversations]);
+  }, [targetBookingId, targetListingId, targetConvId, targetOwnerId, navigate, fetchConversations, setSearchParams]);
 
-  // Load conversations on mount & tab switch
+  // Real-time Background Polling & Window Focus sync
   useEffect(() => {
-    fetchConversations(activeTab, true);
-  }, [activeTab, fetchConversations]);
+    fetchConversations(false);
 
-  // Load messages when activeId changes
-  useEffect(() => {
-    if (activeId) {
-      fetchMessages(activeId);
-      fetchConversations(activeTab, false);
-    }
-  }, [activeId, fetchMessages, activeTab, fetchConversations]);
-
-  // Auto-scroll on initial message load or new message
-  useEffect(() => {
-    if (messages.length > 0) {
-      scrollToBottom(isInitialMount.current ? "auto" : "smooth");
-      isInitialMount.current = false;
-    }
-  }, [messages.length]);
-
-  // Real-time Background Polling & Window Focus sync (every 3.5s)
-  useEffect(() => {
     const interval = setInterval(() => {
-      fetchConversations(activeTab, false);
-      if (activeId) {
-        fetchMessages(activeId, true);
+      fetchConversations(true);
+      if (activeIdRef.current) {
+        fetchMessages(activeIdRef.current, true);
       }
-    }, 3500);
+    }, 4000);
 
     const handleFocus = () => {
-      fetchConversations(activeTab, false);
-      if (activeId) {
-        fetchMessages(activeId, true);
+      fetchConversations(true);
+      if (activeIdRef.current) {
+        fetchMessages(activeIdRef.current, true);
       }
     };
 
@@ -237,19 +246,35 @@ export default function MessagesPage() {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleFocus);
     };
-  }, [activeTab, activeId, fetchConversations, fetchMessages]);
+  }, [fetchConversations, fetchMessages]);
 
-  // Handle Tab Switch: Immediately clears state of the other mode
+  // Auto-scroll on initial message load or new message
+  useEffect(() => {
+    if (messages.length > 0) {
+      scrollToBottom(isInitialMount.current ? "auto" : "smooth");
+      isInitialMount.current = false;
+    }
+  }, [messages.length]);
+
+  // Handle Tab Switch: Smooth instantaneous switch with search param & storage persistence
   const handleTabChange = (newTab) => {
     if (newTab === activeTab) return;
     setActiveTab(newTab);
+    try {
+      localStorage.setItem("renthub_chat_active_tab", newTab);
+    } catch {}
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.set("tab", newTab);
+        return p;
+      },
+      { replace: true }
+    );
     setSearchTerm("");
     setActiveId(null);
     setActiveConv(null);
     setMessages([]);
-    setConversations([]);
-    setLoadingConversations(true);
-    fetchConversations(newTab, true);
   };
 
   // Send Message
@@ -270,27 +295,25 @@ export default function MessagesPage() {
       if (res.data?.success && res.data.message) {
         setMessages((prev) => [...prev, res.data.message]);
         scrollToBottom("smooth");
-        // Refresh conversations to update lastMessage
-        fetchConversations(activeTab, false);
+        fetchConversations(true);
       }
     } catch (err) {
       console.error("Failed to send message:", err);
-      // Revert text on error
       setInputText(textToSend);
     } finally {
       setSending(false);
     }
   };
 
-  // Filter conversations by search and enforce activeTab role
-  const filteredConversations = conversations
-    .filter((c) => c.role === activeTab)
-    .filter((c) => {
+  // Filter current tab conversations by search
+  const filteredConversations = useMemo(() => {
+    return currentTabConversations.filter((c) => {
       const contactName = c.otherUser?.name || "";
       const itemTitle = c.listing?.title || "";
       const term = searchTerm.toLowerCase();
       return contactName.toLowerCase().includes(term) || itemTitle.toLowerCase().includes(term);
     });
+  }, [currentTabConversations, searchTerm]);
 
   return (
     <div className="py-6 sm:py-8 min-h-[calc(100vh-160px)]">
@@ -626,7 +649,7 @@ export default function MessagesPage() {
 
               {/* Message Feed */}
               <div className="flex-1 p-5 overflow-y-auto flex flex-col gap-3 bg-[var(--color-surface-subtle)]">
-                {loadingMessages ? (
+                {loadingMessages && messages.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-xs text-[var(--color-muted-grey)] gap-2">
                     <Loader2 size={24} className="animate-spin text-[var(--color-brand-primary)]" />
                     <span>Loading messages...</span>
@@ -707,6 +730,11 @@ export default function MessagesPage() {
                   {sending ? <Loader2 size={16} className="animate-spin" /> : "Send"}
                 </Button>
               </form>
+            </div>
+          ) : loadingConversations ? (
+            <div className="hidden md:flex flex-col items-center justify-center p-12 text-center bg-[var(--color-surface)]">
+              <Loader2 size={32} className="animate-spin text-[var(--color-brand-primary)] mb-3" />
+              <span className="text-xs font-bold text-[var(--color-muted-grey)]">Loading conversations...</span>
             </div>
           ) : (
             <div className="hidden md:flex flex-col items-center justify-center p-12 text-center bg-[var(--color-surface)]">
