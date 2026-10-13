@@ -86,6 +86,10 @@ export default function ListingDetailPage() {
       }
     }
     fetchReviews();
+
+    const handleFocus = () => fetchReviews();
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
   }, [id]);
 
   const images =

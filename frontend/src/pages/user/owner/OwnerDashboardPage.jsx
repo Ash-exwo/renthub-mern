@@ -79,13 +79,19 @@ export default function OwnerDashboardPage() {
     const handleFocus = () => fetchDashboardData(true);
     window.addEventListener("focus", handleFocus);
 
-    // Auto-poll every 15 seconds so incoming requests from other users pop up live
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") fetchDashboardData(true);
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // Auto-poll every 4 seconds so incoming requests, escrow deposits, and reviews pop up live
     const interval = setInterval(() => {
       fetchDashboardData(true);
-    }, 15000);
+    }, 4000);
 
     return () => {
       window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
       clearInterval(interval);
     };
   }, []);
@@ -486,6 +492,16 @@ export default function OwnerDashboardPage() {
                             </>
                           )}
                         </div>
+                      )}
+
+                      {(isConfirmed || req.status === "completed") && (
+                        <Link
+                          to={`/messages?bookingId=${req._id}&targetUser=${encodeURIComponent(renterName)}&listingTitle=${encodeURIComponent(listingTitle)}`}
+                        >
+                          <Button variant="secondary" size="sm" icon={MessageSquare}>
+                            Chat Renter
+                          </Button>
+                        </Link>
                       )}
 
                       {!isPending && !isConfirmed && (

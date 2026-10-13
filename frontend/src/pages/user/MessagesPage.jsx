@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Send,
   Search,
@@ -8,8 +8,14 @@ import {
 } from "lucide-react";
 import Container from "../../components/Container";
 import { Button } from "../../components/ui";
+import api from "../../utils/api";
 
 export default function MessagesPage() {
+  const [searchParams] = useSearchParams();
+  const targetBookingId = searchParams.get("bookingId");
+  const targetUser = searchParams.get("targetUser");
+  const targetListing = searchParams.get("listingTitle");
+
   const [conversations, setConversations] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("renthub_conversations") || "[]");
@@ -22,16 +28,105 @@ export default function MessagesPage() {
   const [inputText, setInputText] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Initialize or activate specific chat thread from query parameters (e.g. from bookings page)
+  useEffect(() => {
+    if (targetBookingId) {
+      const convId = `conv-${targetBookingId}`;
+      setConversations((prev) => {
+        const existing = prev.find((c) => c.id === convId);
+        if (existing) {
+          setActiveId(convId);
+          return prev;
+        }
+
+        const newConv = {
+          id: convId,
+          bookingId: targetBookingId,
+          user: targetUser || "Rental Contact",
+          listing: targetListing || "Rental Item",
+          lastMessage: "Chat started for rental handover.",
+          time: "Just now",
+          messages: [
+            {
+              id: `msg-${Date.now()}-1`,
+              sender: targetUser || "Host",
+              text: `Hello! Regarding "${targetListing || "the item"}": What time and handover location work best for you?`,
+              time: "Just now",
+              isMe: false,
+            },
+          ],
+        };
+
+        const updated = [newConv, ...prev];
+        try {
+          localStorage.setItem("renthub_conversations", JSON.stringify(updated));
+        } catch {}
+        setActiveId(convId);
+        return updated;
+      });
+    }
+  }, [targetBookingId, targetUser, targetListing]);
+
+  // If no conversations exist, check user's bookings to auto-populate chats
+  useEffect(() => {
+    if (conversations.length === 0 && !targetBookingId) {
+      async function seedFromBookings() {
+        try {
+          const [rentalsRes, requestsRes] = await Promise.all([
+            api.get("/bookings/my-rentals").catch(() => ({ data: { bookings: [] } })),
+            api.get("/bookings/owner-requests").catch(() => ({ data: { bookings: [] } })),
+          ]);
+
+          const allBookings = [
+            ...(rentalsRes.data?.bookings || []),
+            ...(requestsRes.data?.bookings || []),
+          ].filter((b) => b.status === "confirmed" || b.status === "completed" || b.status === "pending");
+
+          if (allBookings.length > 0) {
+            const seeded = allBookings.map((b) => {
+              const otherUser = b.renter?.name || b.owner?.name || "Rental Partner";
+              return {
+                id: `conv-${b._id}`,
+                bookingId: b._id,
+                user: otherUser,
+                listing: b.listing?.title || "Rental Asset",
+                lastMessage: `Rental status: ${b.status}. Ready to coordinate meetup.`,
+                time: "Today",
+                messages: [
+                  {
+                    id: `msg-${b._id}-1`,
+                    sender: otherUser,
+                    text: `Hi! Let's coordinate pickup and return details for "${b.listing?.title}".`,
+                    time: "Today",
+                    isMe: false,
+                  },
+                ],
+              };
+            });
+
+            setConversations(seeded);
+            setActiveId(seeded[0]?.id || null);
+            try {
+              localStorage.setItem("renthub_conversations", JSON.stringify(seeded));
+            } catch {}
+          }
+        } catch {}
+      }
+      seedFromBookings();
+    }
+  }, [conversations.length, targetBookingId]);
+
   const activeConv = conversations.find((c) => c.id === activeId) || conversations[0] || null;
 
   const handleSendMessage = (e) => {
     e.preventDefault();
     if (!inputText.trim() || !activeConv) return;
 
+    const userText = inputText.trim();
     const newMsg = {
       id: `msg-${Date.now()}`,
       sender: "Me",
-      text: inputText.trim(),
+      text: userText,
       time: "Just now",
       isMe: true,
     };
@@ -40,7 +135,7 @@ export default function MessagesPage() {
       if (c.id === activeConv.id) {
         return {
           ...c,
-          lastMessage: inputText.trim(),
+          lastMessage: userText,
           time: "Just now",
           messages: [...(c.messages || []), newMsg],
         };
@@ -51,11 +146,42 @@ export default function MessagesPage() {
     setConversations(updated);
     try {
       localStorage.setItem("renthub_conversations", JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     setInputText("");
+
+    // Simulate friendly auto-reply after 1.5s for realistic testing
+    setTimeout(() => {
+      setConversations((current) => {
+        const targeted = current.find((c) => c.id === activeConv.id);
+        if (!targeted) return current;
+
+        const replyMsg = {
+          id: `msg-${Date.now()}-reply`,
+          sender: targeted.user,
+          text: `Got your message: "${userText}". Sounds good, see you then!`,
+          time: "Just now",
+          isMe: false,
+        };
+
+        const withReply = current.map((c) => {
+          if (c.id === targeted.id) {
+            return {
+              ...c,
+              lastMessage: replyMsg.text,
+              time: "Just now",
+              messages: [...(c.messages || []), replyMsg],
+            };
+          }
+          return c;
+        });
+
+        try {
+          localStorage.setItem("renthub_conversations", JSON.stringify(withReply));
+        } catch {}
+        return withReply;
+      });
+    }, 1500);
   };
 
   const filteredConversations = conversations.filter(

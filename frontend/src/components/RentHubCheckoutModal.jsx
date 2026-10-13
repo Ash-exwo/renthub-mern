@@ -22,6 +22,7 @@ export default function RentHubCheckoutModal({
   isOpen,
   onClose,
   onPaymentSuccess,
+  onSuccess,
 }) {
   const [session, setSession] = useState(null);
   const [loadingSession, setLoadingSession] = useState(true);
@@ -96,6 +97,7 @@ export default function RentHubCheckoutModal({
       setPaymentResult(res.data);
       setPaymentSuccess(true);
       if (onPaymentSuccess) onPaymentSuccess(res.data);
+      if (onSuccess) onSuccess(res.data);
     } catch (err) {
       console.error("Payment processing error:", err);
       setPaymentError(
@@ -209,7 +211,15 @@ export default function RentHubCheckoutModal({
               </div>
 
               <div className="pt-2 flex justify-center gap-3">
-                <Button variant="primary" size="md" onClick={onClose}>
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => {
+                    if (onPaymentSuccess) onPaymentSuccess(paymentResult);
+                    if (onSuccess) onSuccess(paymentResult);
+                    onClose();
+                  }}
+                >
                   Done &amp; View Rental
                 </Button>
               </div>

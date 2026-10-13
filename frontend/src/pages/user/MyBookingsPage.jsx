@@ -49,8 +49,8 @@ export default function MyBookingsPage() {
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewedBookings, setReviewedBookings] = useState({});
 
-  const fetchBookings = async () => {
-    setLoading(true);
+  const fetchBookings = async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
     setError("");
     try {
       const res = await api.get("/bookings/my-rentals");
@@ -75,17 +75,40 @@ export default function MyBookingsPage() {
         }
       }
     } catch (err) {
-      setError(
-        err.response?.data?.message ||
-          "Failed to load your rental bookings. Please refresh."
-      );
+      if (!isBackground) {
+        setError(
+          err.response?.data?.message ||
+            "Failed to load your rental bookings. Please refresh."
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchBookings();
+
+    // 1. Instant re-fetch when user switches to this browser window/tab
+    const handleFocus = () => fetchBookings(true);
+    window.addEventListener("focus", handleFocus);
+
+    // 2. Instant re-fetch when tab becomes visible
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") fetchBookings(true);
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // 3. Fast auto-poll (every 4s) so host acceptance, completion, and refunds update live
+    const interval = setInterval(() => {
+      fetchBookings(true);
+    }, 4000);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearInterval(interval);
+    };
   }, []);
 
   const tabs = [
@@ -398,8 +421,10 @@ export default function MyBookingsPage() {
                           )
                         )}
 
-                        {b.status === "confirmed" && (
-                          <Link to="/messages">
+                        {(b.status === "confirmed" || b.status === "completed") && (
+                          <Link
+                            to={`/messages?bookingId=${b._id}&targetUser=${encodeURIComponent(ownerName)}&listingTitle=${encodeURIComponent(listingTitle)}`}
+                          >
                             <Button variant="secondary" size="sm" icon={MessageSquare}>
                               Chat Host
                             </Button>
@@ -495,7 +520,10 @@ export default function MyBookingsPage() {
               <Button variant="outline" fullWidth onClick={() => setSelectedBooking(null)}>
                 Close
               </Button>
-              <Link to="/messages" className="w-full">
+              <Link
+                to={`/messages?bookingId=${selectedBooking._id}&targetUser=${encodeURIComponent(selectedBooking.owner?.name || "Host")}&listingTitle=${encodeURIComponent(selectedBooking.listing?.title || "Item")}`}
+                className="w-full"
+              >
                 <Button variant="primary" fullWidth icon={MessageSquare}>
                   Chat with Host
                 </Button>
@@ -566,6 +594,7 @@ export default function MyBookingsPage() {
         onClose={() => {
           setReviewModalOpen(false);
           setBookingToReview(null);
+          fetchBookings(true);
         }}
         booking={bookingToReview}
         onReviewSubmitted={handleReviewSubmitted}
@@ -574,17 +603,26 @@ export default function MyBookingsPage() {
       {/* Interactive RentHub Escrow Checkout Modal */}
       <RentHubCheckoutModal
         isOpen={Boolean(checkoutBookingId)}
-        onClose={() => setCheckoutBookingId(null)}
+        onClose={() => {
+          setCheckoutBookingId(null);
+          fetchBookings(true);
+        }}
         bookingId={checkoutBookingId}
+        onPaymentSuccess={() => {
+          fetchBookings(true);
+        }}
         onSuccess={() => {
-          fetchBookings();
+          fetchBookings(true);
         }}
       />
 
       {/* Itemized Payment & Escrow Receipt Modal */}
       <PaymentReceiptModal
         isOpen={Boolean(receiptBookingId)}
-        onClose={() => setReceiptBookingId(null)}
+        onClose={() => {
+          setReceiptBookingId(null);
+          fetchBookings(true);
+        }}
         bookingId={receiptBookingId}
       />
     </div>
