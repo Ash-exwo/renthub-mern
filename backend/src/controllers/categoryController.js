@@ -137,7 +137,7 @@ exports.updateCategory = async (req, res) => {
     if (icon !== undefined) updateData.icon = icon.trim() || "📦";
 
     const category = await Category.findByIdAndUpdate(id, updateData, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
 
