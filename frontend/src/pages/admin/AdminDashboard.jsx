@@ -30,6 +30,8 @@ import {
   Pause,
   Eye,
   FileText,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import api from "../../utils/api";
 import { getAdminToken, getAdminUser, adminLogout } from "../../utils/auth";
@@ -235,6 +237,19 @@ export default function AdminDashboard() {
     adminNotes: "",
     submitting: false,
   });
+
+  // User Management Dedicated Search, Role Filter, and Pagination
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState("all");
+  const [userPage, setUserPage] = useState(1);
+  const USERS_PER_PAGE = 10;
+
+  // Listing Control Dedicated Search, Category Filter, Status Filter, and Pagination
+  const [listingSearch, setListingSearch] = useState("");
+  const [listingCatFilter, setListingCatFilter] = useState("all");
+  const [listingStatusFilter, setListingStatusFilter] = useState("all");
+  const [listingPage, setListingPage] = useState(1);
+  const LISTINGS_PER_PAGE = 10;
 
   // Clear feedback banner after 4 seconds
   useEffect(() => {
@@ -514,6 +529,112 @@ export default function AdminDashboard() {
 
   // Overview Bento KPIs (Live Database Metrics)
   const activeListingsCount = useMemo(() => listings.filter((l) => l.isActive).length, [listings]);
+
+  // Filtered and Paginated Users (Tab 3)
+  const filteredUsers = useMemo(() => {
+    return users.filter((u) => {
+      const q = userSearch.toLowerCase().trim();
+      const name = (u.name || "").toLowerCase();
+      const email = (u.email || "").toLowerCase();
+      const phone = (u.phone || "").toLowerCase();
+      const loc = (u.location || "").toLowerCase();
+      const matchesSearch = !q || name.includes(q) || email.includes(q) || phone.includes(q) || loc.includes(q);
+
+      if (userRoleFilter === "hosts") {
+        return matchesSearch && u.location && u.location.toLowerCase().includes("host");
+      }
+      if (userRoleFilter === "members") {
+        return matchesSearch && (!u.location || !u.location.toLowerCase().includes("host"));
+      }
+      return matchesSearch;
+    });
+  }, [users, userSearch, userRoleFilter]);
+
+  const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
+  const paginatedUsers = useMemo(() => {
+    const start = (userPage - 1) * USERS_PER_PAGE;
+    return filteredUsers.slice(start, start + USERS_PER_PAGE);
+  }, [filteredUsers, userPage]);
+
+  // Filtered and Paginated Listings (Tab 4)
+  const filteredListings = useMemo(() => {
+    return listings.filter((l) => {
+      const q = listingSearch.toLowerCase().trim();
+      const title = (l.title || "").toLowerCase();
+      const ownerName = typeof l.owner === "object" ? (l.owner?.name || "").toLowerCase() : (l.owner || "").toLowerCase();
+      const catId = typeof l.category === "object" ? l.category?._id : l.category;
+      const catName = typeof l.category === "object" ? (l.category?.name || "").toLowerCase() : (l.category || "").toLowerCase();
+
+      const matchesSearch = !q || title.includes(q) || ownerName.includes(q) || catName.includes(q);
+      const matchesCat = listingCatFilter === "all" || catId === listingCatFilter;
+      const matchesStatus =
+        listingStatusFilter === "all" ||
+        (listingStatusFilter === "active" && l.isActive) ||
+        (listingStatusFilter === "paused" && !l.isActive);
+
+      return matchesSearch && matchesCat && matchesStatus;
+    });
+  }, [listings, listingSearch, listingCatFilter, listingStatusFilter]);
+
+  const totalListingPages = Math.max(1, Math.ceil(filteredListings.length / LISTINGS_PER_PAGE));
+  const paginatedListings = useMemo(() => {
+    const start = (listingPage - 1) * LISTINGS_PER_PAGE;
+    return filteredListings.slice(start, start + LISTINGS_PER_PAGE);
+  }, [filteredListings, listingPage]);
+
+  // Live Database Administrative Alerts (Top Bell Popover)
+  const liveNotifications = useMemo(() => {
+    const list = [];
+    // 1. Pending reports
+    reports
+      .filter((r) => r.status === "pending")
+      .forEach((r, idx) => {
+        list.push({
+          id: `rep-${r._id || idx}`,
+          title: "Safety Flag Pending Review",
+          desc: `"${r.targetListing?.title || "Item"}" flagged for ${r.category?.replace(/_/g, " ")}.`,
+          time: r.createdAt ? new Date(r.createdAt).toLocaleDateString() : "Just now",
+          unread: true,
+          type: "danger",
+          tab: "reports",
+        });
+      });
+
+    // 2. Recent listings
+    listings.slice(0, 4).forEach((l, idx) => {
+      const ownerName = typeof l.owner === "object" ? l.owner?.name : "User";
+      list.push({
+        id: `list-${l._id || idx}`,
+        title: "New Rental Listing Added",
+        desc: `"${l.title}" listed by ${ownerName || "host"}.`,
+        time: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : "Recent",
+        unread: false,
+        type: "success",
+        tab: "listings",
+      });
+    });
+
+    // 3. Recent registered users
+    users.slice(0, 4).forEach((u, idx) => {
+      list.push({
+        id: `user-${u._id || idx}`,
+        title: "New User Registered",
+        desc: `${u.name} (${u.email}) joined RentHub.`,
+        time: u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "Recent",
+        unread: false,
+        type: "info",
+        tab: "users",
+      });
+    });
+
+    return list.length > 0 ? list : INITIAL_NOTIFICATIONS;
+  }, [reports, listings, users]);
+
+  useEffect(() => {
+    if (liveNotifications.length > 0) {
+      setNotifications(liveNotifications);
+    }
+  }, [liveNotifications]);
 
   const stats = [
     {
@@ -939,10 +1060,14 @@ export default function AdminDashboard() {
                         notifications.map((item) => (
                           <div
                             key={item.id}
-                            className={`p-3 rounded-xl border transition-colors flex items-start justify-between gap-2.5 ${
+                            onClick={() => {
+                              if (item.tab) setActiveTab(item.tab);
+                              setIsNotificationsOpen(false);
+                            }}
+                            className={`p-3 rounded-xl border transition-colors flex items-start justify-between gap-2.5 cursor-pointer hover:scale-[1.01] ${
                               item.unread
-                                ? "bg-[var(--color-surface-subtle)] border-[var(--color-brand-primary)]/30"
-                                : "bg-transparent border-[var(--color-border-subtle)] opacity-75"
+                                ? "bg-[var(--color-surface-subtle)] border-[var(--color-brand-primary)]/30 hover:bg-[var(--color-surface-hover)]"
+                                : "bg-transparent border-[var(--color-border-subtle)] opacity-75 hover:opacity-100"
                             }`}
                           >
                             <div className="flex items-start gap-2.5 min-w-0">
@@ -1648,10 +1773,89 @@ export default function AdminDashboard() {
           )}
 
           {/* ======================================================== */}
-          {/* TAB 3: USERS MANAGEMENT                                  */}
+          {/* TAB 3: USERS MANAGEMENT (Search, Filter & Pagination)     */}
           {/* ======================================================== */}
           {activeTab === "users" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className="space-y-4">
+              {/* Toolbar */}
+              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                <div className="relative flex-1 max-w-md">
+                  <Search
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search users by name, email, phone, location..."
+                    value={userSearch}
+                    onChange={(e) => {
+                      setUserSearch(e.target.value);
+                      setUserPage(1);
+                    }}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 focus:border-[var(--color-brand-primary)] transition-all font-medium"
+                  />
+                  {userSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserSearch("");
+                        setUserPage(1);
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Role / Type Filters */}
+                <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-secondary)] rounded-2xl border border-[var(--color-border)] text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserRoleFilter("all");
+                      setUserPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                      userRoleFilter === "all"
+                        ? "bg-[var(--color-surface)] text-[var(--color-espresso)] shadow-xs font-bold"
+                        : "text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)]"
+                    }`}
+                  >
+                    All ({users.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserRoleFilter("members");
+                      setUserPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                      userRoleFilter === "members"
+                        ? "bg-[var(--color-surface)] text-[var(--color-espresso)] shadow-xs font-bold"
+                        : "text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)]"
+                    }`}
+                  >
+                    Members
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserRoleFilter("hosts");
+                      setUserPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                      userRoleFilter === "hosts"
+                        ? "bg-[var(--color-surface)] text-[var(--color-espresso)] shadow-xs font-bold"
+                        : "text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)]"
+                    }`}
+                  >
+                    Hosts
+                  </button>
+                </div>
+              </div>
+
+              {/* Table */}
               <div className="bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] overflow-x-auto shadow-xs w-full">
                 <table className="w-full text-left border-collapse min-w-[600px] text-sm">
                   <thead>
@@ -1660,69 +1864,208 @@ export default function AdminDashboard() {
                       <th className="px-6 py-4">Role</th>
                       <th className="px-6 py-4">Joined</th>
                       <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4">Actions</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {users
-                      .filter(
-                        (u) =>
-                          (u.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (u.email || "").toLowerCase().includes(searchQuery.toLowerCase())
-                      )
-                      .map((user) => {
-                        const userId = user._id || user.id;
-                        const joinedDate = user.createdAt
-                          ? new Date(user.createdAt).toLocaleDateString()
-                          : (user.joined || "Recent");
-                        return (
-                          <tr
-                            key={userId}
-                            className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-subtle)] transition-colors"
-                          >
-                            <td className="px-6 py-4">
-                              <div className="font-bold text-[var(--color-espresso)]">{user.name}</div>
-                              <div className="text-xs text-slate-400">{user.email} {user.phone ? `• ${user.phone}` : ""}</div>
-                            </td>
-                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-semibold">
-                              {user.location || "Member"}
-                            </td>
-                            <td className="px-6 py-4 text-slate-500 font-medium">{joinedDate}</td>
-                            <td className="px-6 py-4">
-                              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
-                                Active
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteUser(userId)}
-                                className="px-3 py-1 rounded-xl border border-rose-500/20 text-xs font-bold text-rose-600 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                              >
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    {users.length === 0 && (
+                    {paginatedUsers.map((user) => {
+                      const userId = user._id || user.id;
+                      const joinedDate = user.createdAt
+                        ? new Date(user.createdAt).toLocaleDateString()
+                        : (user.joined || "Recent");
+                      return (
+                        <tr
+                          key={userId}
+                          className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-subtle)] transition-colors"
+                        >
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-[var(--color-espresso)]">{user.name}</div>
+                            <div className="text-xs text-slate-400">{user.email} {user.phone ? `• ${user.phone}` : ""}</div>
+                          </td>
+                          <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-semibold">
+                            {user.location || "Member"}
+                          </td>
+                          <td className="px-6 py-4 text-slate-500 font-medium">{joinedDate}</td>
+                          <td className="px-6 py-4">
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                              Active
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUser(userId)}
+                              className="px-3 py-1 rounded-xl border border-rose-500/20 text-xs font-bold text-rose-600 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {filteredUsers.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center text-xs text-slate-400">
-                          No registered users found in database.
+                        <td colSpan={5} className="px-6 py-10 text-center text-xs text-slate-400">
+                          No users matched your search criteria.
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
+
+              {/* Users Pagination Footer */}
+              {filteredUsers.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2 py-1 text-xs">
+                  <span className="text-slate-500 font-medium">
+                    Showing {(userPage - 1) * USERS_PER_PAGE + 1}–
+                    {Math.min(userPage * USERS_PER_PAGE, filteredUsers.length)} of {filteredUsers.length} users
+                  </span>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={userPage === 1}
+                      onClick={() => setUserPage((p) => Math.max(1, p - 1))}
+                      className="p-1.5 rounded-xl border border-[var(--color-border)] text-slate-600 dark:text-slate-300 hover:bg-[var(--color-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      title="Previous page"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+
+                    {Array.from({ length: totalUserPages }).map((_, i) => (
+                      <button
+                        key={i + 1}
+                        type="button"
+                        onClick={() => setUserPage(i + 1)}
+                        className={`w-7 h-7 rounded-xl font-bold transition-all cursor-pointer ${
+                          userPage === i + 1
+                            ? "bg-[var(--color-brand-primary)] text-white shadow-xs"
+                            : "border border-[var(--color-border)] text-slate-600 dark:text-slate-300 hover:bg-[var(--color-surface-hover)]"
+                        }`}
+                      >
+                        {i + 1}
+                      </button>
+                    ))}
+
+                    <button
+                      type="button"
+                      disabled={userPage === totalUserPages}
+                      onClick={() => setUserPage((p) => Math.min(totalUserPages, p + 1))}
+                      className="p-1.5 rounded-xl border border-[var(--color-border)] text-slate-600 dark:text-slate-300 hover:bg-[var(--color-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      title="Next page"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
 
           {/* ======================================================== */}
-          {/* TAB 4: LISTINGS CONTROL (Live MongoDB)                   */}
+          {/* TAB 4: LISTINGS CONTROL (Search, Filter & Pagination)     */}
           {/* ======================================================== */}
           {activeTab === "listings" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className="space-y-4">
+              {/* Toolbar */}
+              <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+                <div className="relative flex-1 max-w-md">
+                  <Search
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search listings by title, owner, category..."
+                    value={listingSearch}
+                    onChange={(e) => {
+                      setListingSearch(e.target.value);
+                      setListingPage(1);
+                    }}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 focus:border-[var(--color-brand-primary)] transition-all font-medium"
+                  />
+                  {listingSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setListingSearch("");
+                        setListingPage(1);
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Category Dropdown Filter */}
+                  <select
+                    value={listingCatFilter}
+                    onChange={(e) => {
+                      setListingCatFilter(e.target.value);
+                      setListingPage(1);
+                    }}
+                    className="px-3 py-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-espresso)] font-semibold focus:outline-none"
+                  >
+                    <option value="all">All Categories</option>
+                    {categories.map((c) => (
+                      <option key={c._id} value={c._id}>
+                        {c.icon ? `${c.icon} ` : ""}{c.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Status Filter Pills */}
+                  <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-secondary)] rounded-2xl border border-[var(--color-border)] text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setListingStatusFilter("all");
+                        setListingPage(1);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                        listingStatusFilter === "all"
+                          ? "bg-[var(--color-surface)] text-[var(--color-espresso)] shadow-xs font-bold"
+                          : "text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)]"
+                      }`}
+                    >
+                      All ({listings.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setListingStatusFilter("active");
+                        setListingPage(1);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                        listingStatusFilter === "active"
+                          ? "bg-[var(--color-surface)] text-[var(--color-espresso)] shadow-xs font-bold"
+                          : "text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)]"
+                      }`}
+                    >
+                      Active ({activeListingsCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setListingStatusFilter("paused");
+                        setListingPage(1);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                        listingStatusFilter === "paused"
+                          ? "bg-[var(--color-surface)] text-[var(--color-espresso)] shadow-xs font-bold"
+                          : "text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)]"
+                      }`}
+                    >
+                      Paused ({listings.length - activeListingsCount})
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Table */}
               <div className="bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] overflow-x-auto shadow-xs w-full">
                 <table className="w-full text-left border-collapse min-w-[600px] text-sm">
                   <thead>
@@ -1736,83 +2079,123 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {listings
-                      .filter((l) => {
-                        const title = l.title || "";
-                        const ownerName = typeof l.owner === "object" ? l.owner?.name || "" : l.owner || "";
-                        const q = searchQuery.toLowerCase();
-                        return title.toLowerCase().includes(q) || ownerName.toLowerCase().includes(q);
-                      })
-                      .map((listing) => {
-                        const listingId = listing._id || listing.id;
-                        const ownerName = typeof listing.owner === "object" ? listing.owner?.name || "User" : listing.owner || "User";
-                        const catName = typeof listing.category === "object" ? listing.category?.name || "General" : listing.category || "General";
-                        const catIcon = typeof listing.category === "object" ? listing.category?.icon : null;
-                        const priceStr = "₹" + Number(listing.rentalPricePerDay || 0).toLocaleString("en-IN") + "/day";
-                        const isLive = listing.isActive;
+                    {paginatedListings.map((listing) => {
+                      const listingId = listing._id || listing.id;
+                      const ownerName = typeof listing.owner === "object" ? listing.owner?.name || "User" : listing.owner || "User";
+                      const catName = typeof listing.category === "object" ? listing.category?.name || "General" : listing.category || "General";
+                      const catIcon = typeof listing.category === "object" ? listing.category?.icon : null;
+                      const priceStr = "₹" + Number(listing.rentalPricePerDay || 0).toLocaleString("en-IN") + "/day";
+                      const isLive = listing.isActive;
 
-                        return (
-                          <tr
-                            key={listingId}
-                            className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-subtle)] transition-colors"
-                          >
-                            <td className="px-6 py-4 font-bold text-[var(--color-espresso)]">{listing.title}</td>
-                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">{ownerName}</td>
-                            <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">
-                              <span className="inline-flex items-center gap-1">
-                                {catIcon && <span>{catIcon}</span>}
-                                <span>{catName}</span>
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-slate-700 dark:text-slate-200 font-black">{priceStr}</td>
-                            <td className="px-6 py-4">
-                              <span
-                                className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      return (
+                        <tr
+                          key={listingId}
+                          className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-subtle)] transition-colors"
+                        >
+                          <td className="px-6 py-4 font-bold text-[var(--color-espresso)]">{listing.title}</td>
+                          <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">{ownerName}</td>
+                          <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">
+                            <span className="inline-flex items-center gap-1">
+                              {catIcon && <span>{catIcon}</span>}
+                              <span>{catName}</span>
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-slate-700 dark:text-slate-200 font-black">{priceStr}</td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                isLive
+                                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                  : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                              }`}
+                            >
+                              {isLive ? "Active" : "Paused"}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2.5">
+                              <button
+                                type="button"
+                                onClick={() => handleListingAction(listingId, isLive ? "Paused" : "Approved")}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs border ${
                                   isLive
-                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                                    : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20"
+                                    : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/25"
                                 }`}
                               >
-                                {isLive ? "Active" : "Paused"}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex items-center justify-end gap-2.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleListingAction(listingId, isLive ? "Paused" : "Approved")}
-                                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs border ${
-                                    isLive
-                                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20"
-                                      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/25"
-                                  }`}
-                                >
-                                  <Check size={13} />
-                                  <span>{isLive ? "Pause" : "Activate"}</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteListing(listingId)}
-                                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
-                                  title="Delete Listing from Database"
-                                >
-                                  <Trash2 size={15} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    {listings.length === 0 && (
+                                <Check size={13} />
+                                <span>{isLive ? "Pause" : "Activate"}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteListing(listingId)}
+                                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer"
+                                title="Delete Listing from Database"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {filteredListings.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-6 py-8 text-center text-xs text-slate-400">
-                          No listings found in MongoDB database.
+                        <td colSpan={6} className="px-6 py-10 text-center text-xs text-slate-400">
+                          No listings matched your search or filter criteria.
                         </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
+
+              {/* Listings Pagination Footer */}
+              {filteredListings.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2 py-1 text-xs">
+                  <span className="text-slate-500 font-medium">
+                    Showing {(listingPage - 1) * LISTINGS_PER_PAGE + 1}–
+                    {Math.min(listingPage * LISTINGS_PER_PAGE, filteredListings.length)} of {filteredListings.length} listings
+                  </span>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={listingPage === 1}
+                      onClick={() => setListingPage((p) => Math.max(1, p - 1))}
+                      className="p-1.5 rounded-xl border border-[var(--color-border)] text-slate-600 dark:text-slate-300 hover:bg-[var(--color-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      title="Previous page"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+
+                    {Array.from({ length: totalListingPages }).map((_, i) => (
+                      <button
+                        key={i + 1}
+                        type="button"
+                        onClick={() => setListingPage(i + 1)}
+                        className={`w-7 h-7 rounded-xl font-bold transition-all cursor-pointer ${
+                          listingPage === i + 1
+                            ? "bg-[var(--color-brand-primary)] text-white shadow-xs"
+                            : "border border-[var(--color-border)] text-slate-600 dark:text-slate-300 hover:bg-[var(--color-surface-hover)]"
+                        }`}
+                      >
+                        {i + 1}
+                      </button>
+                    ))}
+
+                    <button
+                      type="button"
+                      disabled={listingPage === totalListingPages}
+                      onClick={() => setListingPage((p) => Math.min(totalListingPages, p + 1))}
+                      className="p-1.5 rounded-xl border border-[var(--color-border)] text-slate-600 dark:text-slate-300 hover:bg-[var(--color-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      title="Next page"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -2423,11 +2806,15 @@ export default function AdminDashboard() {
                     onChange={(e) => setActionModal((prev) => ({ ...prev, actionTaken: e.target.value }))}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 font-medium"
                   >
-                    <option value="none">None / Information Only</option>
+                    <option value="none">None / Information Only (Listing stays live on Explore)</option>
                     <option value="listing_paused">⏸️ Pause Listing (Immediately freeze in database)</option>
-                    <option value="warning_sent">⚠️ Warn Host (Safety notification dispatched)</option>
-                    <option value="dismissed">❌ Dismiss Report</option>
+                    <option value="unpause_listing">▶️ Unpause Listing (Restore visibility on Explore)</option>
+                    <option value="warning_sent">⚠️ Warn Host (Listing stays live on Explore)</option>
+                    <option value="dismissed">❌ Dismiss Report (Listing stays live on Explore)</option>
                   </select>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    ℹ️ During investigation or review, the listing remains live and visible on Explore unless "Pause Listing" is selected.
+                  </p>
                 </div>
 
                 {/* Admin Notes */}

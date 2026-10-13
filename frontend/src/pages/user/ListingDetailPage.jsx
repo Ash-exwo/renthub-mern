@@ -545,6 +545,37 @@ export default function ListingDetailPage() {
               </ul>
             </div>
 
+            {/* Pickup Location & Interactive Map */}
+            {listing.coordinates?.lat && listing.coordinates?.lng && (
+              <div className="flex flex-col gap-3 pt-4 border-t border-[var(--color-border-subtle)]">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h2 className="font-[var(--font-heading)] text-lg sm:text-xl font-bold text-[var(--color-espresso)] flex items-center gap-2">
+                    <MapPin className="text-rose-500" size={20} />
+                    <span>Pickup Location &amp; Map Area</span>
+                  </h2>
+                  <span className="text-xs font-semibold text-[var(--color-muted-grey)]">
+                    {listing.location}
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--color-muted-grey)]">
+                  Exact item location and pickup point coordinates set by host.
+                </p>
+                <div className="rounded-2xl overflow-hidden border border-[var(--color-border)] h-52 sm:h-64 w-full shadow-xs">
+                  <iframe
+                    title="Listing Location Map"
+                    width="100%"
+                    height="100%"
+                    frameBorder="0"
+                    scrolling="no"
+                    marginHeight="0"
+                    marginWidth="0"
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${listing.coordinates.lng - 0.015}%2C${listing.coordinates.lat - 0.015}%2C${listing.coordinates.lng + 0.015}%2C${listing.coordinates.lat + 0.015}&layer=mapnik&marker=${listing.coordinates.lat}%2C${listing.coordinates.lng}`}
+                    className="w-full h-full"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Interactive Availability Calendar Section */}
             <div
               className="flex flex-col gap-4 pt-4 border-t border-[var(--color-border-subtle)]"

@@ -2,11 +2,18 @@ import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, CheckCircle2, Zap } from "lucide-react";
 import api from "../../utils/api";
+import { isLoggedIn } from "../../utils/auth";
 import { Input, Button, Card } from "../../components/ui";
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    if (isLoggedIn()) {
+      navigate("/explore", { replace: true });
+    }
+  }, [navigate]);
 
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [message, setMessage] = useState(location.state?.successMessage || location.state?.notice || "");

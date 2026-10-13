@@ -40,6 +40,18 @@ const listingSchema = new mongoose.Schema(
       maxlength: [200, "Location cannot exceed 200 characters."],
     },
 
+    // Geo coordinates for interactive map picker & distance calculations
+    coordinates: {
+      lat: {
+        type: Number,
+        default: null,
+      },
+      lng: {
+        type: Number,
+        default: null,
+      },
+    },
+
     // Cloudinary or external image URLs
     images: {
       type: [String],

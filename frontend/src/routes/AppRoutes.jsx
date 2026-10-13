@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router-dom";
 import UserLayout from "../layouts/UserLayout";
 import AdminLayout from "../layouts/AdminLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
+import GuestRoute from "../components/GuestRoute";
 
 // Public Marketplace & Renter Pages
 import HomePage from "../pages/user/HomePage";
@@ -54,9 +55,12 @@ function AppRoutes() {
         <Route path="/explore" element={<ExplorePage />} />
         <Route path="/listings/:id" element={<ListingDetailPage />} />
         <Route path="/how-it-works" element={<HowItWorksPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        {/* Guest-only Auth Routes (Logged-in users redirected to /explore) */}
+        <Route element={<GuestRoute />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        </Route>
 
         <Route path="*" element={<NotFoundPage />} />
       </Route>

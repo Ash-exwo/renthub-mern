@@ -1,11 +1,18 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { User, Mail, Lock, Phone, MapPin, Eye, EyeOff, ShieldCheck, Sparkles } from "lucide-react";
 import api from "../../utils/api";
+import { isLoggedIn } from "../../utils/auth";
 import { Input, Button, Card } from "../../components/ui";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isLoggedIn()) {
+      navigate("/explore", { replace: true });
+    }
+  }, [navigate]);
 
   const [formData, setFormData] = useState({
     name: "",

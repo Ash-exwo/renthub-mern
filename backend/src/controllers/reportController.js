@@ -202,6 +202,12 @@ exports.actionReport = async (req, res) => {
       } catch (e) {
         console.error("Warning: Failed to notify owner of listing pause:", e.message);
       }
+    } else if ((nextAction === "unpause_listing" || nextStatus === "dismissed") && report.targetListing) {
+      // If admin explicitly unpauses or dismisses the report, restore listing to active
+      await Listing.findByIdAndUpdate(report.targetListing._id || report.targetListing, {
+        isActive: true,
+        availability: "available",
+      });
     }
 
     report.status = nextStatus;

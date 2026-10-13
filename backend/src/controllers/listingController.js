@@ -12,6 +12,7 @@ exports.createListing = async (req, res) => {
       category,
       rentalPricePerDay,
       location,
+      coordinates,
       images,
       deposit,
       amenities,
@@ -62,6 +63,13 @@ exports.createListing = async (req, res) => {
       category: categoryDoc._id,
       rentalPricePerDay: Number(rentalPricePerDay),
       location: location.trim(),
+      coordinates:
+        coordinates && typeof coordinates === "object"
+          ? {
+              lat: typeof coordinates.lat === "number" ? coordinates.lat : null,
+              lng: typeof coordinates.lng === "number" ? coordinates.lng : null,
+            }
+          : undefined,
       images: Array.isArray(images) ? images : [],
       deposit: Number(deposit || 0),
       amenities: Array.isArray(amenities)
@@ -167,6 +175,7 @@ exports.updateListing = async (req, res) => {
       category,
       rentalPricePerDay,
       location,
+      coordinates,
       images,
       availability,
       deposit,
@@ -226,6 +235,12 @@ exports.updateListing = async (req, res) => {
       listing.rentalPricePerDay = Number(rentalPricePerDay);
     }
     if (location !== undefined) listing.location = location.trim();
+    if (coordinates !== undefined && typeof coordinates === "object") {
+      listing.coordinates = {
+        lat: typeof coordinates.lat === "number" ? coordinates.lat : null,
+        lng: typeof coordinates.lng === "number" ? coordinates.lng : null,
+      };
+    }
     if (images !== undefined && Array.isArray(images)) listing.images = images;
     if (deposit !== undefined) listing.deposit = Number(deposit || 0);
     if (amenities !== undefined) {

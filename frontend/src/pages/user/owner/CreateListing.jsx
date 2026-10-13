@@ -4,28 +4,28 @@ import {
   Check,
   ArrowRight,
   ArrowLeft,
-  Plus,
-  Trash2,
   Sparkles,
-  Upload,
-  Image as ImageIcon,
+  Search,
+  MapPin,
+  ChevronDown,
+  X,
   CheckCircle2,
 } from "lucide-react";
 import api from "../../../utils/api";
 import Container from "../../../components/Container";
 import {
   Input,
-  Select,
   Textarea,
   Button,
   Card,
   ListingCard,
 } from "../../../components/ui";
 import ImageUploader from "../../../components/ImageUploader";
+import MapPicker from "../../../components/MapPicker";
 
 const STEPS = [
   { id: 1, title: "Basic Info", sub: "Title & category" },
-  { id: 2, title: "Specifications", sub: "Location & included items" },
+  { id: 2, title: "Location", sub: "Interactive map pin" },
   { id: 3, title: "Photos", sub: "Upload photos" },
   { id: 4, title: "Pricing & Rules", sub: "Rate & deposit" },
   { id: 5, title: "Preview & Publish", sub: "Final review" },
@@ -33,26 +33,32 @@ const STEPS = [
 
 export default function CreateListing() {
   const navigate = useNavigate();
-  const fileInputRef = useRef(null);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState("");
-  const [uploadError, setUploadError] = useState("");
 
-  // Form State - Clean initial values (no hardcoded dummy values)
+  // Category searchable dropdown state
+  const [categorySearch, setCategorySearch] = useState("");
+  const [isCategoryOpen, setIsCategoryOpen] = useState(false);
+  const categoryDropdownRef = useRef(null);
+
+  // Form State
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     category: "",
     location: "",
-    amenitiesInput: "",
+    coordinates: null,
     rentalPricePerDay: "",
     deposit: "",
     availability: "available",
     rules: "Valid Govt ID required at handover. Return in original clean condition.",
   });
+
+  const [images, setImages] = useState([]);
+  const [errors, setErrors] = useState({});
 
   useEffect(() => {
     async function loadCategories() {
@@ -68,9 +74,19 @@ export default function CreateListing() {
     loadCategories();
   }, []);
 
-  // Photos state
-  const [images, setImages] = useState([]);
-  const [errors, setErrors] = useState({});
+  // Close category combobox when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (
+        categoryDropdownRef.current &&
+        !categoryDropdownRef.current.contains(event.target)
+      ) {
+        setIsCategoryOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -95,7 +111,7 @@ export default function CreateListing() {
       }
     } else if (step === 2) {
       if (!formData.location.trim() || formData.location.trim().length < 3) {
-        errs.location = "Please enter a valid city or pickup area.";
+        errs.location = "Please enter or pin a valid city or pickup area on the map.";
       }
     } else if (step === 3) {
       if (images.length === 0) {
@@ -127,13 +143,6 @@ export default function CreateListing() {
     setLoading(true);
     setServerError("");
 
-    const amenitiesArray = formData.amenitiesInput
-      ? formData.amenitiesInput
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-
     try {
       await api.post("/listings", {
         title: formData.title.trim(),
@@ -141,11 +150,12 @@ export default function CreateListing() {
         category: formData.category,
         rentalPricePerDay: Number(formData.rentalPricePerDay),
         deposit: Number(formData.deposit || 0),
-        amenities: amenitiesArray,
-        rules: formData.rules.trim(),
         location: formData.location.trim(),
+        coordinates: formData.coordinates,
         images,
         availability: formData.availability,
+        rules: formData.rules.trim(),
+        amenities: [],
       });
 
       navigate("/my-listings");
@@ -183,25 +193,29 @@ export default function CreateListing() {
     reviewsCount: 0,
   };
 
+  const filteredCategories = categories.filter((cat) =>
+    (cat.name || "").toLowerCase().includes(categorySearch.toLowerCase())
+  );
+
   return (
     <div className="py-8 sm:py-12 min-h-[calc(100vh-180px)]">
       <Container>
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="text-center mb-8">
             <span className="text-xs font-bold text-[var(--color-brand-primary)] uppercase tracking-wider">
               Publisher Wizard
             </span>
-            <h1 className="font-[var(--font-heading)] text-2xl sm:text-3xl font-extrabold text-[var(--color-espresso)] my-1">
+            <h1 className="font-[var(--font-heading)] text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[var(--color-espresso)] my-1">
               List an Asset on RentHub
             </h1>
-            <p className="text-xs text-[var(--color-muted-grey)]">
-              Step {currentStep} of {STEPS.length}: {STEPS[currentStep - 1].title}
+            <p className="text-xs sm:text-sm text-[var(--color-muted-grey)]">
+              Step {currentStep} of {STEPS.length}: {STEPS[currentStep - 1].title} — {STEPS[currentStep - 1].sub}
             </p>
           </div>
 
           {/* Stepper Indicator */}
-          <div className="flex justify-between items-center mb-10 relative">
+          <div className="flex justify-between items-center mb-10 relative px-2">
             {STEPS.map((step) => {
               const isCompleted = currentStep > step.id;
               const isCurrent = currentStep === step.id;
@@ -218,18 +232,21 @@ export default function CreateListing() {
                       isCompleted
                         ? "bg-emerald-600 text-white"
                         : isCurrent
-                        ? "bg-[var(--color-brand-primary)] text-white shadow-md shadow-indigo-500/30"
-                        : "bg-[var(--color-surface-secondary)] text-[var(--color-muted-grey)]"
+                        ? "bg-[var(--color-brand-primary)] text-white shadow-md shadow-indigo-500/30 ring-4 ring-indigo-500/20"
+                        : "bg-[var(--color-surface-secondary)] text-[var(--color-muted-grey)] border border-[var(--color-border)]"
                     }`}
                   >
                     {isCompleted ? <Check size={14} /> : step.id}
                   </div>
+                  <span className="hidden sm:block text-[11px] font-bold text-[var(--color-espresso)]">
+                    {step.title}
+                  </span>
                 </div>
               );
             })}
 
             {/* Connecting line */}
-            <div className="absolute top-4 left-4 right-4 h-0.5 bg-[var(--color-border)] z-0" />
+            <div className="absolute top-4.5 left-6 right-6 h-0.5 bg-[var(--color-border)] z-0" />
           </div>
 
           {serverError && (
@@ -242,76 +259,178 @@ export default function CreateListing() {
           )}
 
           {/* Step Form Body */}
-          <Card padding="lg" variant="elevated">
+          <Card padding="lg" variant="elevated" className="border border-[var(--color-border)] shadow-xl rounded-3xl">
             {/* Step 1: Basic Information */}
             {currentStep === 1 && (
               <div className="flex flex-col gap-5">
-                <h2 className="text-lg font-bold text-[var(--color-espresso)]">Step 1: Title & Category</h2>
+                <div>
+                  <h2 className="text-xl font-bold text-[var(--color-espresso)]">
+                    Step 1: Title &amp; Category
+                  </h2>
+                  <p className="text-xs text-[var(--color-muted-grey)] mt-0.5">
+                    Start with a catchy, descriptive title and select the most fitting category.
+                  </p>
+                </div>
 
                 <Input
                   label="Listing Title"
                   name="title"
-                  placeholder="e.g. Sony Alpha A7 IV Camera + 24-70mm Lens"
+                  placeholder="e.g. Sony Alpha A7 IV Camera + 24-70mm GM Lens"
                   value={formData.title}
                   onChange={handleChange}
                   error={errors.title}
-                  helperText="Use a clear, descriptive title mentioning brand and model."
+                  helperText="Use a clear, descriptive title mentioning brand, model, and year."
                   required
                 />
 
-                <Select
-                  label="Category"
-                  name="category"
-                  value={formData.category}
-                  onChange={handleChange}
-                  error={errors.category}
-                  required
-                >
-                  <option value="">Select a category</option>
-                  {categories.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.icon ? `${c.icon} ` : ""}{c.name}
-                    </option>
-                  ))}
-                </Select>
+                {/* Searchable Category Combobox */}
+                <div className="space-y-1.5" ref={categoryDropdownRef}>
+                  <label className="block text-xs font-bold text-[var(--color-espresso)]">
+                    Category <span className="text-rose-500">*</span>
+                  </label>
+
+                  <div className="relative">
+                    {selectedCategoryDoc ? (
+                      <div className="flex items-center justify-between p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{selectedCategoryDoc.icon || "📦"}</span>
+                          <span className="text-sm font-bold text-[var(--color-espresso)]">
+                            {selectedCategoryDoc.name}
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setFormData((prev) => ({ ...prev, category: "" }));
+                            setIsCategoryOpen(true);
+                          }}
+                        >
+                          Change
+                        </Button>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => setIsCategoryOpen(true)}
+                        className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer bg-[var(--color-surface)] ${
+                          errors.category
+                            ? "border-rose-500 ring-1 ring-rose-500/20"
+                            : "border-[var(--color-border)] hover:border-indigo-500/50"
+                        }`}
+                      >
+                        <span className="text-xs sm:text-sm text-[var(--color-muted-grey)]">
+                          Click to search and select a category...
+                        </span>
+                        <ChevronDown size={16} className="text-[var(--color-muted-grey)]" />
+                      </div>
+                    )}
+
+                    {/* Combobox Dropdown Popover */}
+                    {isCategoryOpen && (
+                      <div className="absolute top-[calc(100%+6px)] left-0 right-0 z-30 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl p-2.5 animate-in fade-in zoom-in-95 duration-100">
+                        {/* Search Input */}
+                        <div className="relative mb-2">
+                          <Search
+                            size={14}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted-grey)]"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Type to filter categories fast..."
+                            value={categorySearch}
+                            onChange={(e) => setCategorySearch(e.target.value)}
+                            autoFocus
+                            className="w-full pl-9 pr-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-secondary)] text-xs text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20"
+                          />
+                        </div>
+
+                        {/* List */}
+                        <div className="max-h-56 overflow-y-auto space-y-1">
+                          {filteredCategories.length > 0 ? (
+                            filteredCategories.map((c) => (
+                              <div
+                                key={c._id}
+                                onClick={() => {
+                                  setFormData((prev) => ({ ...prev, category: c._id }));
+                                  setErrors((prev) => ({ ...prev, category: "" }));
+                                  setIsCategoryOpen(false);
+                                  setCategorySearch("");
+                                }}
+                                className={`flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer text-xs transition-colors ${
+                                  formData.category === c._id
+                                    ? "bg-indigo-500/10 text-indigo-600 font-bold"
+                                    : "hover:bg-[var(--color-surface-hover)] text-[var(--color-espresso)]"
+                                }`}
+                              >
+                                <span className="text-base">{c.icon || "📦"}</span>
+                                <span className="font-semibold">{c.name}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-xs text-[var(--color-muted-grey)] py-4 text-center">
+                              No categories matching "{categorySearch}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {errors.category && (
+                    <p className="text-xs text-rose-500 font-medium">{errors.category}</p>
+                  )}
+                </div>
 
                 <Textarea
                   label="Listing Description"
                   name="description"
-                  rows={5}
-                  placeholder="Describe condition, technical specifications, and what it's best suited for..."
+                  rows={6}
+                  placeholder="Describe condition, technical specifications, what's included (chargers, batteries, cases, accessories), and best use cases..."
                   value={formData.description}
                   onChange={handleChange}
                   error={errors.description}
-                  helperText="Minimum 20 characters. Detailed listings attract significantly more bookings."
+                  helperText="Minimum 20 characters. Include all included accessories, cables, and packaging directly here in the description."
                   required
                 />
               </div>
             )}
 
-            {/* Step 2: Location & Specifications */}
+            {/* Step 2: Location & Interactive Map Pin */}
             {currentStep === 2 && (
               <div className="flex flex-col gap-5">
-                <h2 className="text-lg font-bold text-[var(--color-espresso)]">Step 2: Location & Inclusions</h2>
+                <div>
+                  <h2 className="text-xl font-bold text-[var(--color-espresso)]">
+                    Step 2: Pickup Location &amp; Map Coordinates
+                  </h2>
+                  <p className="text-xs text-[var(--color-muted-grey)] mt-0.5">
+                    Search your location, use browser GPS, or click directly on the interactive map to set your rental pin.
+                  </p>
+                </div>
 
-                <Input
-                  label="Pickup Location / Area"
-                  name="location"
-                  placeholder="e.g. Marine Drive, Kochi or Indiranagar, Bangalore"
-                  value={formData.location}
-                  onChange={handleChange}
-                  error={errors.location}
-                  helperText="Renters will see this area when searching for rentals near them."
-                  required
+                <MapPicker
+                  location={formData.location}
+                  coordinates={formData.coordinates}
+                  onChange={({ location, coordinates }) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      location,
+                      coordinates,
+                    }));
+                    if (errors.location) {
+                      setErrors((prev) => ({ ...prev, location: "" }));
+                    }
+                  }}
                 />
 
                 <Input
-                  label="What's Included (Comma separated)"
-                  name="amenitiesInput"
-                  placeholder="e.g. Charger, Extra battery, Padded bag, Lens hood, 64GB SD Card"
-                  value={formData.amenitiesInput}
+                  label="Pickup Location / Area Address (as displayed to renters)"
+                  name="location"
+                  placeholder="e.g. Indiranagar, Bengaluru, Karnataka"
+                  value={formData.location}
                   onChange={handleChange}
-                  helperText="List accessories, cables, bags, or items included with the rental."
+                  error={errors.location}
+                  helperText="Automatically updated from the map pin above, or refine the text address manually."
+                  required
                 />
               </div>
             )}
@@ -320,9 +439,11 @@ export default function CreateListing() {
             {currentStep === 3 && (
               <div className="flex flex-col gap-5">
                 <div>
-                  <h2 className="text-lg font-bold text-[var(--color-espresso)]">Step 3: High-Resolution Photos</h2>
+                  <h2 className="text-xl font-bold text-[var(--color-espresso)]">
+                    Step 3: High-Resolution Photos
+                  </h2>
                   <p className="text-xs text-[var(--color-muted-grey)] mt-0.5">
-                    Upload photos directly to Cloudinary CDN or paste image links. You can add up to 8 photos.
+                    Stage photos to preview them first, then confirm upload to Cloudinary CDN. Add up to 8 photos.
                   </p>
                 </div>
 
@@ -341,7 +462,14 @@ export default function CreateListing() {
             {/* Step 4: Pricing & Security Deposit */}
             {currentStep === 4 && (
               <div className="flex flex-col gap-5">
-                <h2 className="text-lg font-bold text-[var(--color-espresso)]">Step 4: Pricing & Rental Rules</h2>
+                <div>
+                  <h2 className="text-xl font-bold text-[var(--color-espresso)]">
+                    Step 4: Pricing &amp; Rental Rules
+                  </h2>
+                  <p className="text-xs text-[var(--color-muted-grey)] mt-0.5">
+                    Set your daily rental rate, refundable security deposit, and verification rules.
+                  </p>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Input
@@ -368,15 +496,20 @@ export default function CreateListing() {
                   />
                 </div>
 
-                <Select
-                  label="Initial Availability"
-                  name="availability"
-                  value={formData.availability}
-                  onChange={handleChange}
-                >
-                  <option value="available">Available Immediately</option>
-                  <option value="unavailable">Paused / Unavailable</option>
-                </Select>
+                <div>
+                  <label className="block text-xs font-bold text-[var(--color-espresso)] mb-1.5">
+                    Initial Availability
+                  </label>
+                  <select
+                    name="availability"
+                    value={formData.availability}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 font-medium"
+                  >
+                    <option value="available">Available Immediately</option>
+                    <option value="unavailable">Paused / Unavailable</option>
+                  </select>
+                </div>
 
                 <Textarea
                   label="Rental Rules & Verification Requirements"
@@ -384,7 +517,7 @@ export default function CreateListing() {
                   rows={3}
                   value={formData.rules}
                   onChange={handleChange}
-                  helperText="Specify ID requirements, return timings, or usage restrictions."
+                  helperText="Specify Govt ID requirements, return timings, or usage restrictions."
                 />
               </div>
             )}
@@ -393,19 +526,19 @@ export default function CreateListing() {
             {currentStep === 5 && (
               <div className="flex flex-col gap-6">
                 <div>
-                  <h2 className="text-lg font-bold text-[var(--color-espresso)] mb-1">
-                    Step 5: Review & Publish
+                  <h2 className="text-xl font-bold text-[var(--color-espresso)] mb-1">
+                    Step 5: Review &amp; Publish
                   </h2>
                   <p className="text-xs text-[var(--color-muted-grey)]">
-                    Live preview of your listing. Verify all specifications and pricing before making it live.
+                    Live preview of your listing. Verify all specifications, location coordinates, and pricing before publishing.
                   </p>
                 </div>
 
                 {/* The Interactive Preview Card */}
                 <div className="max-w-sm mx-auto w-full">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted-grey)] mb-2 flex items-center justify-between">
-                    <span>Card Appearance in Catalog</span>
-                    <span className="text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full text-[10px] font-semibold">
+                    <span>Catalog Card Appearance</span>
+                    <span className="text-emerald-600 bg-emerald-500/10 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
                       Ready to Publish
                     </span>
                   </div>
@@ -413,13 +546,13 @@ export default function CreateListing() {
                 </div>
 
                 {/* Full Specifications Breakdown */}
-                <div className="bg-[var(--color-surface-secondary)] border border-[var(--color-border)] p-5 rounded-2xl text-xs space-y-3 text-[var(--color-espresso)]">
+                <div className="bg-[var(--color-surface-secondary)] border border-[var(--color-border)] p-6 rounded-2xl text-xs space-y-3 text-[var(--color-espresso)]">
                   <h3 className="font-bold text-sm text-[var(--color-espresso)] border-b border-[var(--color-border-subtle)] pb-2 flex items-center gap-2">
-                    <Sparkles size={15} className="text-[var(--color-brand-primary)]" />
+                    <Sparkles size={16} className="text-[var(--color-brand-primary)]" />
                     Listing Details Summary
                   </h3>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                     <div>
                       <span className="text-[var(--color-muted-grey)] block">Title:</span>
                       <span className="font-semibold text-[var(--color-espresso)]">{formData.title || "Not provided"}</span>
@@ -441,37 +574,23 @@ export default function CreateListing() {
                       </span>
                     </div>
                     <div className="sm:col-span-2">
-                      <span className="text-[var(--color-muted-grey)] block">Pickup Location:</span>
-                      <span className="font-semibold text-[var(--color-espresso)]">{formData.location || "Not provided"}</span>
+                      <span className="text-[var(--color-muted-grey)] block">Pickup Location &amp; Coordinates:</span>
+                      <span className="font-semibold text-[var(--color-espresso)] flex items-center gap-1.5 mt-0.5">
+                        <MapPin size={13} className="text-rose-500" />
+                        <span>{formData.location || "Not specified"}</span>
+                        {formData.coordinates?.lat && (
+                          <span className="font-mono text-[10px] text-[var(--color-muted-grey)]">
+                            ({formData.coordinates.lat.toFixed(4)}°, {formData.coordinates.lng.toFixed(4)}°)
+                          </span>
+                        )}
+                      </span>
                     </div>
                   </div>
-
-                  {/* Included items */}
-                  {formData.amenitiesInput && (
-                    <div className="pt-2 border-t border-[var(--color-border-subtle)]">
-                      <span className="text-[var(--color-muted-grey)] block mb-1.5 font-semibold">Included Items:</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {formData.amenitiesInput.split(",").map((item, idx) => {
-                          const trimmed = item.trim();
-                          if (!trimmed) return null;
-                          return (
-                            <span
-                              key={idx}
-                              className="px-2.5 py-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[11px] font-medium text-[var(--color-espresso)] inline-flex items-center gap-1"
-                            >
-                              <CheckCircle2 size={12} className="text-emerald-500" />
-                              {trimmed}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Rules */}
                   {formData.rules && (
                     <div className="pt-2 border-t border-[var(--color-border-subtle)]">
-                      <span className="text-[var(--color-muted-grey)] block mb-1 font-semibold">Rental Terms & Rules:</span>
+                      <span className="text-[var(--color-muted-grey)] block mb-1 font-semibold">Rental Terms &amp; Rules:</span>
                       <p className="text-[var(--color-secondary-text)] italic bg-[var(--color-surface)] p-2.5 rounded-lg border border-[var(--color-border)]">
                         "{formData.rules}"
                       </p>

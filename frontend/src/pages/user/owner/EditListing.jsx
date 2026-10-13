@@ -3,43 +3,45 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ArrowLeft,
   Save,
-  Upload,
-  Plus,
-  Trash2,
-  Image as ImageIcon,
-  CheckCircle2,
+  Search,
+  ChevronDown,
+  MapPin,
+  Check,
 } from "lucide-react";
 import api from "../../../utils/api";
 import { getUser } from "../../../utils/auth";
 import Container from "../../../components/Container";
 import {
   Input,
-  Select,
   Textarea,
   Button,
   Card,
 } from "../../../components/ui";
 import ImageUploader from "../../../components/ImageUploader";
+import MapPicker from "../../../components/MapPicker";
 
 export default function EditListing() {
   const { id } = useParams();
   const navigate = useNavigate();
   const currentUser = getUser();
-  const fileInputRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState([]);
   const [serverError, setServerError] = useState("");
-  const [uploadError, setUploadError] = useState("");
   const [errors, setErrors] = useState({});
+
+  // Category combobox state
+  const [categorySearch, setCategorySearch] = useState("");
+  const [isCategoryOpen, setIsCategoryOpen] = useState(false);
+  const categoryDropdownRef = useRef(null);
 
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     category: "",
     location: "",
-    amenitiesInput: "",
+    coordinates: null,
     rentalPricePerDay: "",
     deposit: "",
     availability: "available",
@@ -47,9 +49,8 @@ export default function EditListing() {
   });
 
   const [images, setImages] = useState([]);
-  const [newImageUrl, setNewImageUrl] = useState("");
 
-  // 1. Fetch Categories & Listing Details
+  // Fetch Categories & Listing Details
   useEffect(() => {
     async function loadData() {
       try {
@@ -85,9 +86,7 @@ export default function EditListing() {
           description: listing.description || "",
           category: categoryId || "",
           location: listing.location || "",
-          amenitiesInput: Array.isArray(listing.amenities)
-            ? listing.amenities.join(", ")
-            : listing.amenities || "",
+          coordinates: listing.coordinates || null,
           rentalPricePerDay: listing.rentalPricePerDay || "",
           deposit: listing.deposit !== undefined ? listing.deposit : "",
           availability: listing.availability || "available",
@@ -105,6 +104,20 @@ export default function EditListing() {
 
     loadData();
   }, [id]);
+
+  // Close category combobox when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (
+        categoryDropdownRef.current &&
+        !categoryDropdownRef.current.contains(event.target)
+      ) {
+        setIsCategoryOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -126,7 +139,7 @@ export default function EditListing() {
       errs.category = "Please select a category.";
     }
     if (!formData.location.trim() || formData.location.trim().length < 3) {
-      errs.location = "Please enter a valid city or pickup area.";
+      errs.location = "Please enter or pin a valid city or pickup area on the map.";
     }
     if (!formData.rentalPricePerDay || Number(formData.rentalPricePerDay) <= 0) {
       errs.rentalPricePerDay = "Enter a valid daily rental price.";
@@ -149,13 +162,6 @@ export default function EditListing() {
     setSaving(true);
     setServerError("");
 
-    const amenitiesArray = formData.amenitiesInput
-      ? formData.amenitiesInput
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-
     try {
       await api.put(`/listings/${id}`, {
         title: formData.title.trim(),
@@ -163,11 +169,12 @@ export default function EditListing() {
         category: formData.category,
         rentalPricePerDay: Number(formData.rentalPricePerDay),
         deposit: Number(formData.deposit || 0),
-        amenities: amenitiesArray,
         rules: formData.rules.trim(),
         location: formData.location.trim(),
+        coordinates: formData.coordinates,
         images,
         availability: formData.availability,
+        amenities: [],
       });
 
       navigate("/my-listings");
@@ -179,25 +186,32 @@ export default function EditListing() {
           ? "Photo size is too large. Please upload a smaller photo."
           : err.response?.status === 403
           ? "You are not authorized to update this listing."
-          : "Failed to update listing. Please verify required fields.");
+          : "Failed to update listing. Please check required fields and network connection.");
       setServerError(serverMsg);
     } finally {
       setSaving(false);
     }
   };
 
+  const selectedCategoryDoc = categories.find((c) => c._id === formData.category);
+  const filteredCategories = categories.filter((cat) =>
+    (cat.name || "").toLowerCase().includes(categorySearch.toLowerCase())
+  );
+
   if (loading) {
     return (
-      <div className="py-20 text-center text-sm text-[var(--color-muted-grey)]">
-        Loading listing details...
-      </div>
+      <Container>
+        <div className="py-24 text-center text-xs text-[var(--color-muted-grey)]">
+          Loading listing details for editing...
+        </div>
+      </Container>
     );
   }
 
   return (
     <div className="py-8 sm:py-12 min-h-[calc(100vh-180px)]">
       <Container>
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <Link
@@ -214,7 +228,7 @@ export default function EditListing() {
               Edit Listing
             </h1>
             <p className="text-xs sm:text-sm text-[var(--color-muted-grey)] mt-1">
-              Update pricing, specifications, photos, and availability for your rental asset.
+              Update pricing, specifications, map coordinates, photos, and availability for your rental asset.
             </p>
           </div>
 
@@ -228,7 +242,7 @@ export default function EditListing() {
           )}
 
           <form onSubmit={handleSubmit}>
-            <Card padding="lg" variant="elevated" className="space-y-6">
+            <Card padding="lg" variant="elevated" className="space-y-6 border border-[var(--color-border)] shadow-xl rounded-3xl">
               {/* Section 1: Basic Information */}
               <div className="space-y-4">
                 <h2 className="text-base font-bold text-[var(--color-espresso)] border-b border-[var(--color-border-subtle)] pb-2">
@@ -245,57 +259,145 @@ export default function EditListing() {
                   required
                 />
 
-                <Select
-                  label="Category"
-                  name="category"
-                  value={formData.category}
-                  onChange={handleChange}
-                  error={errors.category}
-                  required
-                >
-                  <option value="">Select a category</option>
-                  {categories.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.icon ? `${c.icon} ` : ""}{c.name}
-                    </option>
-                  ))}
-                </Select>
+                {/* Searchable Category Combobox */}
+                <div className="space-y-1.5" ref={categoryDropdownRef}>
+                  <label className="block text-xs font-bold text-[var(--color-espresso)]">
+                    Category <span className="text-rose-500">*</span>
+                  </label>
+
+                  <div className="relative">
+                    {selectedCategoryDoc ? (
+                      <div className="flex items-center justify-between p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{selectedCategoryDoc.icon || "📦"}</span>
+                          <span className="text-sm font-bold text-[var(--color-espresso)]">
+                            {selectedCategoryDoc.name}
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setFormData((prev) => ({ ...prev, category: "" }));
+                            setIsCategoryOpen(true);
+                          }}
+                        >
+                          Change
+                        </Button>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => setIsCategoryOpen(true)}
+                        className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer bg-[var(--color-surface)] ${
+                          errors.category
+                            ? "border-rose-500 ring-1 ring-rose-500/20"
+                            : "border-[var(--color-border)] hover:border-indigo-500/50"
+                        }`}
+                      >
+                        <span className="text-xs sm:text-sm text-[var(--color-muted-grey)]">
+                          Click to search and select category...
+                        </span>
+                        <ChevronDown size={16} className="text-[var(--color-muted-grey)]" />
+                      </div>
+                    )}
+
+                    {/* Combobox Dropdown Popover */}
+                    {isCategoryOpen && (
+                      <div className="absolute top-[calc(100%+6px)] left-0 right-0 z-30 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl p-2.5 animate-in fade-in zoom-in-95 duration-100">
+                        <div className="relative mb-2">
+                          <Search
+                            size={14}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted-grey)]"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Type to filter categories fast..."
+                            value={categorySearch}
+                            onChange={(e) => setCategorySearch(e.target.value)}
+                            autoFocus
+                            className="w-full pl-9 pr-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-secondary)] text-xs text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20"
+                          />
+                        </div>
+
+                        <div className="max-h-56 overflow-y-auto space-y-1">
+                          {filteredCategories.length > 0 ? (
+                            filteredCategories.map((c) => (
+                              <div
+                                key={c._id}
+                                onClick={() => {
+                                  setFormData((prev) => ({ ...prev, category: c._id }));
+                                  setErrors((prev) => ({ ...prev, category: "" }));
+                                  setIsCategoryOpen(false);
+                                  setCategorySearch("");
+                                }}
+                                className={`flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer text-xs transition-colors ${
+                                  formData.category === c._id
+                                    ? "bg-indigo-500/10 text-indigo-600 font-bold"
+                                    : "hover:bg-[var(--color-surface-hover)] text-[var(--color-espresso)]"
+                                }`}
+                              >
+                                <span className="text-base">{c.icon || "📦"}</span>
+                                <span className="font-semibold">{c.name}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-xs text-[var(--color-muted-grey)] py-4 text-center">
+                              No categories matching "{categorySearch}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {errors.category && (
+                    <p className="text-xs text-rose-500 font-medium">{errors.category}</p>
+                  )}
+                </div>
 
                 <Textarea
                   label="Listing Description"
                   name="description"
-                  rows={5}
+                  rows={6}
                   value={formData.description}
                   onChange={handleChange}
                   error={errors.description}
-                  placeholder="Describe condition, specifications, and what is included..."
+                  placeholder="Describe condition, specifications, what's included (accessories, chargers, cases), and usage guidelines..."
+                  helperText="Minimum 20 characters. Include all included accessories, chargers, and cases directly here."
                   required
                 />
               </div>
 
-              {/* Section 2: Location & Specifications */}
+              {/* Section 2: Location & Interactive Map Coordinates */}
               <div className="space-y-4 pt-2">
                 <h2 className="text-base font-bold text-[var(--color-espresso)] border-b border-[var(--color-border-subtle)] pb-2">
-                  Location & Inclusions
+                  Pickup Location &amp; Map Coordinates
                 </h2>
 
+                <MapPicker
+                  location={formData.location}
+                  coordinates={formData.coordinates}
+                  onChange={({ location, coordinates }) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      location,
+                      coordinates,
+                    }));
+                    if (errors.location) {
+                      setErrors((prev) => ({ ...prev, location: "" }));
+                    }
+                  }}
+                />
+
                 <Input
-                  label="Pickup Location / Area"
+                  label="Pickup Location / Area Address (as displayed to renters)"
                   name="location"
                   value={formData.location}
                   onChange={handleChange}
                   error={errors.location}
-                  placeholder="e.g. Marine Drive, Kochi"
+                  placeholder="e.g. Indiranagar, Bengaluru, Karnataka"
+                  helperText="Auto-populated from map pin above, or refine manually."
                   required
-                />
-
-                <Input
-                  label="What's Included (Comma separated)"
-                  name="amenitiesInput"
-                  value={formData.amenitiesInput}
-                  onChange={handleChange}
-                  placeholder="e.g. Charger, Extra battery, Lens hood, Case"
-                  helperText="List accessories or items included with the rental."
                 />
               </div>
 
@@ -318,7 +420,7 @@ export default function EditListing() {
               {/* Section 4: Pricing, Deposit & Rules */}
               <div className="space-y-4 pt-2">
                 <h2 className="text-base font-bold text-[var(--color-espresso)] border-b border-[var(--color-border-subtle)] pb-2">
-                  Pricing & Rules
+                  Pricing &amp; Rules
                 </h2>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -344,22 +446,28 @@ export default function EditListing() {
                   />
                 </div>
 
-                <Select
-                  label="Availability Status"
-                  name="availability"
-                  value={formData.availability}
-                  onChange={handleChange}
-                >
-                  <option value="available">Active & Available for Rent</option>
-                  <option value="unavailable">Paused / Unavailable</option>
-                </Select>
+                <div>
+                  <label className="block text-xs font-bold text-[var(--color-espresso)] mb-1.5">
+                    Availability Status
+                  </label>
+                  <select
+                    name="availability"
+                    value={formData.availability}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 font-medium"
+                  >
+                    <option value="available">Active &amp; Available for Rent</option>
+                    <option value="unavailable">Paused / Unavailable</option>
+                  </select>
+                </div>
 
                 <Textarea
-                  label="Rental Rules & Verification"
+                  label="Rental Rules &amp; Verification"
                   name="rules"
                   rows={3}
                   value={formData.rules}
                   onChange={handleChange}
+                  helperText="ID requirements or handover timings."
                 />
               </div>
 

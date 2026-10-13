@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Upload,
   CloudUpload,
@@ -11,6 +11,8 @@ import {
   Loader2,
   CheckCircle2,
   Image as ImageIcon,
+  X,
+  FileCheck,
 } from "lucide-react";
 import api from "../utils/api";
 import { Button, Input } from "./ui";
@@ -21,6 +23,7 @@ export default function ImageUploader({
   maxImages = 8,
   error = "",
 }) {
+  const [stagedFiles, setStagedFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [uploadError, setUploadError] = useState("");
@@ -28,9 +31,25 @@ export default function ImageUploader({
   const [urlInput, setUrlInput] = useState("");
   const fileInputRef = useRef(null);
 
-  const availableSlots = maxImages - images.length;
+  const availableSlots = maxImages - images.length - stagedFiles.length;
 
-  const handleUploadFiles = async (fileList) => {
+  // Revoke object URLs on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      stagedFiles.forEach((item) => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      });
+    };
+  }, []);
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Stage files locally for user preview and acknowledgement
+  const handleStageFiles = (fileList) => {
     if (!fileList || fileList.length === 0) return;
     setUploadError("");
 
@@ -43,7 +62,7 @@ export default function ImageUploader({
 
     if (files.length > availableSlots) {
       setUploadError(
-        `You can only add ${availableSlots} more photo(s). Maximum is ${maxImages}.`
+        `You can only stage ${Math.max(0, availableSlots)} more photo(s). Maximum is ${maxImages}.`
       );
       return;
     }
@@ -55,13 +74,45 @@ export default function ImageUploader({
       return;
     }
 
+    const newStaged = files.map((file) => ({
+      id: `${file.name}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      name: file.name,
+      sizeFormatted: formatFileSize(file.size),
+    }));
+
+    setStagedFiles((prev) => [...prev, ...newStaged]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleRemoveStaged = (id) => {
+    setStagedFiles((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((item) => item.id !== id);
+    });
+  };
+
+  const handleClearStaged = () => {
+    stagedFiles.forEach((item) => {
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    });
+    setStagedFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  // Explicit confirmation: Upload staged files to Cloudinary
+  const handleConfirmUpload = async () => {
+    if (stagedFiles.length === 0) return;
+    setUploadError("");
     setUploading(true);
-    setUploadProgress(`Uploading ${files.length} photo(s) to Cloudinary...`);
+    setUploadProgress(`Uploading ${stagedFiles.length} photo(s) to Cloudinary...`);
 
     try {
       const formData = new FormData();
-      files.forEach((file) => {
-        formData.append("images", file);
+      stagedFiles.forEach((item) => {
+        formData.append("images", item.file);
       });
 
       const res = await api.post("/upload/images", formData, {
@@ -72,6 +123,11 @@ export default function ImageUploader({
 
       if (res.data?.urls && Array.isArray(res.data.urls)) {
         onChange([...images, ...res.data.urls]);
+        // Clean up staged previews
+        stagedFiles.forEach((item) => {
+          if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        });
+        setStagedFiles([]);
       }
     } catch (err) {
       console.error("Upload error:", err);
@@ -87,7 +143,7 @@ export default function ImageUploader({
   };
 
   const handleFileInputChange = (e) => {
-    handleUploadFiles(e.target.files);
+    handleStageFiles(e.target.files);
   };
 
   const handleDragOver = (e) => {
@@ -106,7 +162,7 @@ export default function ImageUploader({
     e.preventDefault();
     setIsDragging(false);
     if (!uploading && availableSlots > 0) {
-      handleUploadFiles(e.dataTransfer.files);
+      handleStageFiles(e.dataTransfer.files);
     }
   };
 
@@ -154,7 +210,7 @@ export default function ImageUploader({
   return (
     <div className="flex flex-col gap-4">
       {/* Upload Dropzone */}
-      {availableSlots > 0 && (
+      {availableSlots > 0 && !uploading && (
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -164,7 +220,7 @@ export default function ImageUploader({
             isDragging
               ? "border-indigo-600 bg-indigo-50/20 scale-[1.01]"
               : "border-[var(--color-border)] hover:border-indigo-500/50 bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]"
-          } ${uploading ? "pointer-events-none opacity-70" : ""}`}
+          }`}
         >
           <input
             ref={fileInputRef}
@@ -175,36 +231,112 @@ export default function ImageUploader({
             className="hidden"
           />
 
-          {uploading ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-2">
-              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-              <div className="font-extrabold text-sm text-[var(--color-espresso)]">
-                {uploadProgress}
-              </div>
-              <p className="text-xs text-[var(--color-muted-grey)]">
-                Optimizing and delivering to Cloudinary CDN
-              </p>
+          <div className="flex flex-col items-center justify-center gap-2">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 grid place-items-center mb-1">
+              <CloudUpload size={26} />
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-2">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 grid place-items-center mb-1">
-                <CloudUpload size={26} />
-              </div>
 
-              <div className="font-extrabold text-sm sm:text-base text-[var(--color-espresso)]">
-                Drag and drop your photos here, or{" "}
-                <span className="text-indigo-600 hover:underline">browse files</span>
-              </div>
-
-              <p className="text-xs text-[var(--color-muted-grey)] max-w-md">
-                High-resolution images up to 10MB each (JPG, PNG, WEBP). Photos are automatically optimized on Cloudinary CDN.
-              </p>
-
-              <div className="mt-2 text-[11px] font-bold px-3 py-1 rounded-full bg-[var(--color-surface-secondary)] text-[var(--color-muted-grey)] border border-[var(--color-border)]">
-                {images.length} / {maxImages} photos uploaded ({availableSlots} remaining)
-              </div>
+            <div className="font-extrabold text-sm sm:text-base text-[var(--color-espresso)]">
+              Choose photos or{" "}
+              <span className="text-indigo-600 hover:underline">browse from device</span>
             </div>
-          )}
+
+            <p className="text-xs text-[var(--color-muted-grey)] max-w-md">
+              Select photos to preview and confirm before sending to Cloudinary CDN. High-resolution files up to 10MB each (JPG, PNG, WEBP).
+            </p>
+
+            <div className="mt-2 text-[11px] font-bold px-3 py-1 rounded-full bg-[var(--color-surface-secondary)] text-[var(--color-muted-grey)] border border-[var(--color-border)]">
+              {images.length + stagedFiles.length} / {maxImages} slots used ({availableSlots} remaining)
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Uploading progress indicator */}
+      {uploading && (
+        <div className="border border-indigo-500/30 bg-indigo-500/5 rounded-2xl p-6 text-center flex flex-col items-center justify-center gap-2">
+          <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+          <div className="font-extrabold text-sm text-[var(--color-espresso)]">
+            {uploadProgress}
+          </div>
+          <p className="text-xs text-[var(--color-muted-grey)]">
+            Optimizing images and uploading to Cloudinary CDN...
+          </p>
+        </div>
+      )}
+
+      {/* STAGED FILES PREVIEW & CONFIRMATION BOX */}
+      {stagedFiles.length > 0 && !uploading && (
+        <div className="p-4 sm:p-5 rounded-2xl border-2 border-indigo-500/30 bg-indigo-500/5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <FileCheck size={18} className="text-indigo-600 dark:text-indigo-400" />
+              <h4 className="font-extrabold text-sm text-[var(--color-espresso)] m-0">
+                Staged Photos ({stagedFiles.length}) — Awaiting Upload Confirmation
+              </h4>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleClearStaged}
+              className="text-xs font-semibold text-[var(--color-muted-grey)] hover:text-rose-600 cursor-pointer"
+            >
+              Clear All Staged
+            </button>
+          </div>
+
+          <p className="text-xs text-[var(--color-secondary-text)]">
+            Review your selected photos below. When ready, click "Confirm &amp; Upload" to dispatch them to Cloudinary.
+          </p>
+
+          {/* Staged Thumbnails Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {stagedFiles.map((item) => (
+              <div
+                key={item.id}
+                className="relative rounded-xl overflow-hidden border border-[var(--color-border)] bg-slate-900 aspect-video shadow-xs group"
+              >
+                <img
+                  src={item.previewUrl}
+                  alt={item.name}
+                  className="w-full h-full object-cover"
+                />
+
+                {/* File size badge */}
+                <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono backdrop-blur-xs">
+                  {item.sizeFormatted}
+                </div>
+
+                {/* Remove button */}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveStaged(item.id)}
+                  className="absolute top-1.5 right-1.5 w-6 h-6 rounded-lg bg-black/70 hover:bg-rose-600 text-white grid place-items-center backdrop-blur-xs transition-colors cursor-pointer"
+                  title="Remove staged photo"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Explicit User Confirmation Action */}
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-indigo-500/20">
+            <span className="text-xs text-[var(--color-muted-grey)]">
+              {stagedFiles.length} file{stagedFiles.length === 1 ? "" : "s"} ready for upload
+            </span>
+
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              icon={CloudUpload}
+              onClick={handleConfirmUpload}
+              className="w-full sm:w-auto"
+            >
+              Confirm &amp; Upload {stagedFiles.length} Photo{stagedFiles.length === 1 ? "" : "s"} to Cloudinary
+            </Button>
+          </div>
         </div>
       )}
 
@@ -234,11 +366,14 @@ export default function ImageUploader({
         </div>
       )}
 
-      {/* Uploaded Photos Grid */}
+      {/* Uploaded Photos Gallery (Already on Cloudinary) */}
       {images.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs font-semibold text-[var(--color-espresso)]">
-            <span>Uploaded Gallery ({images.length})</span>
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 size={14} className="text-emerald-500" />
+              <span>Uploaded Gallery ({images.length} on Cloudinary)</span>
+            </span>
             <span className="text-[11px] text-[var(--color-muted-grey)]">
               Slot #1 is used as your primary cover photo
             </span>
@@ -275,7 +410,7 @@ export default function ImageUploader({
                       <button
                         type="button"
                         onClick={() => handleSetCover(idx)}
-                        className="px-2 py-0.5 rounded-lg bg-black/60 hover:bg-indigo-600 text-white text-[10px] font-bold backdrop-blur-sm pointer-events-auto transition-colors"
+                        className="px-2 py-0.5 rounded-lg bg-black/60 hover:bg-indigo-600 text-white text-[10px] font-bold backdrop-blur-sm pointer-events-auto transition-colors cursor-pointer"
                         title="Make this the cover photo"
                       >
                         Set as Cover
@@ -285,7 +420,7 @@ export default function ImageUploader({
                     <button
                       type="button"
                       onClick={() => handleRemove(idx)}
-                      className="w-6 h-6 rounded-lg bg-black/60 hover:bg-rose-600 text-white grid place-items-center backdrop-blur-sm pointer-events-auto transition-colors shadow-sm"
+                      className="w-6 h-6 rounded-lg bg-black/60 hover:bg-rose-600 text-white grid place-items-center backdrop-blur-sm pointer-events-auto transition-colors shadow-sm cursor-pointer"
                       title="Delete photo"
                     >
                       <Trash2 size={12} />
@@ -298,7 +433,7 @@ export default function ImageUploader({
                       type="button"
                       disabled={idx === 0}
                       onClick={() => handleMove(idx, idx - 1)}
-                      className="p-1 rounded-lg bg-black/60 hover:bg-black/90 disabled:opacity-30 disabled:cursor-not-allowed text-white backdrop-blur-sm"
+                      className="p-1 rounded-lg bg-black/60 hover:bg-black/90 disabled:opacity-30 disabled:cursor-not-allowed text-white backdrop-blur-sm cursor-pointer"
                       title="Move photo left"
                     >
                       <ChevronLeft size={14} />
@@ -312,7 +447,7 @@ export default function ImageUploader({
                       type="button"
                       disabled={idx === images.length - 1}
                       onClick={() => handleMove(idx, idx + 1)}
-                      className="p-1 rounded-lg bg-black/60 hover:bg-black/90 disabled:opacity-30 disabled:cursor-not-allowed text-white backdrop-blur-sm"
+                      className="p-1 rounded-lg bg-black/60 hover:bg-black/90 disabled:opacity-30 disabled:cursor-not-allowed text-white backdrop-blur-sm cursor-pointer"
                       title="Move photo right"
                     >
                       <ChevronRight size={14} />

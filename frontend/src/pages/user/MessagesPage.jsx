@@ -386,7 +386,7 @@ export default function MessagesPage() {
         </div>
 
         {/* Messaging Container */}
-        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xl h-[620px] grid grid-cols-1 md:grid-cols-[340px_1fr] overflow-hidden">
+        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xl h-[calc(100vh-210px)] min-h-[650px] max-h-[860px] grid grid-cols-1 md:grid-cols-[380px_1fr] overflow-hidden">
           {/* Left Column: Inbox List */}
           <div
             className={`border-r border-[var(--color-border-subtle)] flex flex-col bg-[var(--color-surface-subtle)] ${

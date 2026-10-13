@@ -294,8 +294,8 @@ export default function NotificationsPage() {
                     </div>
 
                     {/* Content */}
-                    <div className="flex-1 min-w-0 pr-8">
-                      <div className="flex items-baseline justify-between gap-3 mb-1">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3 mb-1">
                         <span
                           className={`text-sm ${
                             item.isRead
@@ -305,9 +305,25 @@ export default function NotificationsPage() {
                         >
                           {item.title}
                         </span>
-                        <span className="text-xs text-[var(--color-muted-grey)] font-medium shrink-0">
-                          {formatTimeAgo(item.createdAt)}
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs text-[var(--color-muted-grey)] font-medium">
+                            {formatTimeAgo(item.createdAt)}
+                          </span>
+                          {!item.isRead && (
+                            <span
+                              className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-xs shrink-0"
+                              title="Unread notification"
+                            />
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => handleDelete(e, item._id)}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-[var(--color-muted-grey)] hover:text-rose-600 hover:bg-rose-500/10 transition-all cursor-pointer"
+                            title="Delete notification"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
 
                       <p className="text-xs sm:text-sm text-[var(--color-secondary-text)] leading-relaxed mb-2.5">
@@ -319,21 +335,6 @@ export default function NotificationsPage() {
                           <span>View Details &rarr;</span>
                         </span>
                       )}
-                    </div>
-
-                    {/* Right action controls */}
-                    <div className="absolute top-4 right-4 flex items-center gap-2">
-                      {!item.isRead && (
-                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-sm" />
-                      )}
-                      <button
-                        type="button"
-                        onClick={(e) => handleDelete(e, item._id)}
-                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-[var(--color-muted-grey)] hover:text-rose-600 hover:bg-rose-500/10 transition-all cursor-pointer"
-                        title="Delete notification"
-                      >
-                        <Trash2 size={15} />
-                      </button>
                     </div>
                   </div>
                 );
