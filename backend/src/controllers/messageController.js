@@ -32,7 +32,8 @@ exports.getConversations = async (req, res) => {
 
     // Calculate unread totals for this user across both sections
     const formatted = conversations.map((c) => {
-      const isRenter = c.renter?._id?.toString() === userId.toString();
+      const renterId = c.renter?._id ? c.renter._id.toString() : c.renter?.toString();
+      const isRenter = renterId === userId.toString();
       const unreadCount = isRenter ? c.unreadCountRenter : c.unreadCountOwner;
       const otherUser = isRenter ? c.owner : c.renter;
 
@@ -187,8 +188,10 @@ exports.getMessages = async (req, res) => {
       return res.status(404).json({ message: "Conversation not found." });
     }
 
-    const isRenter = conv.renter?._id?.toString() === userId.toString();
-    const isOwner = conv.owner?._id?.toString() === userId.toString();
+    const renterId = conv.renter?._id ? conv.renter._id.toString() : conv.renter?.toString();
+    const isRenter = renterId === userId.toString();
+    const ownerId = conv.owner?._id ? conv.owner._id.toString() : conv.owner?.toString();
+    const isOwner = ownerId === userId.toString();
 
     if (!isRenter && !isOwner) {
       return res.status(403).json({ message: "You are not authorized to view this conversation." });

@@ -73,55 +73,84 @@ export default function MessagesPage() {
   }, []);
 
   // Fetch conversations for the active tab and calculate tab stats
-  const fetchConversations = useCallback(async (tabToFetch = activeTab) => {
-    try {
-      const [currentRes, allRes] = await Promise.all([
-        api.get(`/messages/conversations?role=${tabToFetch}`),
-        api.get(`/messages/conversations`),
-      ]);
+  const fetchConversations = useCallback(
+    async (tabToFetch = activeTab, shouldAutoSelect = false) => {
+      try {
+        const [currentRes, allRes] = await Promise.all([
+          api.get(`/messages/conversations?role=${tabToFetch}`),
+          api.get(`/messages/conversations`),
+        ]);
 
-      if (currentRes.data?.success) {
-        setConversations(currentRes.data.conversations || []);
+        if (currentRes.data?.success) {
+          // Strictly filter so only conversations matching tabToFetch are present
+          const list = (currentRes.data.conversations || []).filter((c) => c.role === tabToFetch);
+          setConversations(list);
+
+          // Auto-select on desktop if requested, or if current activeId is not in this tab's list
+          if (shouldAutoSelect || !activeId || !list.some((c) => (c._id || c.id) === activeId)) {
+            if (list.length > 0 && window.innerWidth >= 768) {
+              const firstId = list[0]._id || list[0].id;
+              setActiveId(firstId);
+            } else if (list.length === 0) {
+              setActiveId(null);
+              setActiveConv(null);
+              setMessages([]);
+            }
+          }
+        }
+
+        if (allRes.data?.conversations) {
+          const allList = allRes.data.conversations;
+          const rentingCount = allList
+            .filter((c) => c.role === "renting")
+            .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+          const hostingCount = allList
+            .filter((c) => c.role === "hosting")
+            .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+
+          setTabStats({
+            rentingUnread: rentingCount,
+            hostingUnread: hostingCount,
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load conversations:", err);
+      } finally {
+        setLoadingConversations(false);
       }
-
-      if (allRes.data?.conversations) {
-        const allList = allRes.data.conversations;
-        const rentingCount = allList
-          .filter((c) => c.role === "renting")
-          .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-        const hostingCount = allList
-          .filter((c) => c.role === "hosting")
-          .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
-
-        setTabStats({
-          rentingUnread: rentingCount,
-          hostingUnread: hostingCount,
-        });
-      }
-    } catch (err) {
-      console.error("Failed to load conversations:", err);
-    } finally {
-      setLoadingConversations(false);
-    }
-  }, [activeTab]);
+    },
+    [activeTab, activeId]
+  );
 
   // Fetch messages for active conversation
-  const fetchMessages = useCallback(async (convId, isBackground = false) => {
-    if (!convId) return;
-    if (!isBackground) setLoadingMessages(true);
+  const fetchMessages = useCallback(
+    async (convId, isBackground = false) => {
+      if (!convId) return;
+      if (!isBackground) setLoadingMessages(true);
 
-    try {
-      const res = await api.get(`/messages/conversation/${convId}`);
-      if (res.data?.success) {
-        setMessages(res.data.messages || []);
-        setActiveConv(res.data.conversation);
+      try {
+        const res = await api.get(`/messages/conversation/${convId}`);
+        if (res.data?.success && res.data.conversation) {
+          const fetchedConv = res.data.conversation;
+          // Strictly ensure this conversation matches the currently active tab
+          if (fetchedConv.role === activeTab) {
+            setMessages(res.data.messages || []);
+            setActiveConv(fetchedConv);
+          } else {
+            // Mismatched tab: reset active thread
+            setActiveId(null);
+            setActiveConv(null);
+            setMessages([]);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load messages:", err);
+      } finally {
+        if (!isBackground) setLoadingMessages(false);
       }
-    } catch (err) {
-      console.error("Failed to load messages:", err);
-    } finally {
-      if (!isBackground) setLoadingMessages(false);
-    }
-  }, []);
+    },
+    [activeTab]
+  );
 
   // Initialize from query parameters (bookingId or listingId)
   useEffect(() => {
@@ -146,10 +175,10 @@ export default function MessagesPage() {
 
           if (initRes.data?.success && initRes.data.conversation) {
             const conv = initRes.data.conversation;
+            const targetRole = conv.role || "renting";
+            setActiveTab(targetRole);
             setActiveId(conv._id || conv.id);
-            if (conv.role) {
-              setActiveTab(conv.role);
-            }
+            fetchConversations(targetRole, false);
           }
         } catch (err) {
           console.error("Error auto-initializing conversation:", err);
@@ -158,19 +187,18 @@ export default function MessagesPage() {
     }
 
     initFromParams();
-  }, [targetBookingId, targetListingId, targetConvId, targetOwnerId, navigate]);
+  }, [targetBookingId, targetListingId, targetConvId, targetOwnerId, navigate, fetchConversations]);
 
   // Load conversations on mount & tab switch
   useEffect(() => {
-    fetchConversations(activeTab);
+    fetchConversations(activeTab, true);
   }, [activeTab, fetchConversations]);
 
   // Load messages when activeId changes
   useEffect(() => {
     if (activeId) {
       fetchMessages(activeId);
-      // Also update conversations to clear unread
-      fetchConversations(activeTab);
+      fetchConversations(activeTab, false);
     }
   }, [activeId, fetchMessages, activeTab, fetchConversations]);
 
@@ -185,14 +213,14 @@ export default function MessagesPage() {
   // Real-time Background Polling & Window Focus sync (every 3.5s)
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchConversations(activeTab);
+      fetchConversations(activeTab, false);
       if (activeId) {
         fetchMessages(activeId, true);
       }
     }, 3500);
 
     const handleFocus = () => {
-      fetchConversations(activeTab);
+      fetchConversations(activeTab, false);
       if (activeId) {
         fetchMessages(activeId, true);
       }
@@ -208,17 +236,17 @@ export default function MessagesPage() {
     };
   }, [activeTab, activeId, fetchConversations, fetchMessages]);
 
-  // Handle Tab Switch
+  // Handle Tab Switch: Immediately clears state of the other mode
   const handleTabChange = (newTab) => {
+    if (newTab === activeTab) return;
     setActiveTab(newTab);
     setSearchTerm("");
-    // If current active conversation is not in this tab, reset active conversation
-    const foundInNewTab = conversations.find((c) => c.role === newTab);
-    if (!foundInNewTab) {
-      setActiveId(null);
-      setActiveConv(null);
-      setMessages([]);
-    }
+    setActiveId(null);
+    setActiveConv(null);
+    setMessages([]);
+    setConversations([]);
+    setLoadingConversations(true);
+    fetchConversations(newTab, true);
   };
 
   // Send Message
@@ -240,7 +268,7 @@ export default function MessagesPage() {
         setMessages((prev) => [...prev, res.data.message]);
         scrollToBottom("smooth");
         // Refresh conversations to update lastMessage
-        fetchConversations(activeTab);
+        fetchConversations(activeTab, false);
       }
     } catch (err) {
       console.error("Failed to send message:", err);
@@ -251,20 +279,15 @@ export default function MessagesPage() {
     }
   };
 
-  // Filter conversations by search
-  const filteredConversations = conversations.filter((c) => {
-    const contactName = c.otherUser?.name || "";
-    const itemTitle = c.listing?.title || "";
-    const term = searchTerm.toLowerCase();
-    return contactName.toLowerCase().includes(term) || itemTitle.toLowerCase().includes(term);
-  });
-
-  // Automatically pick first conversation if none selected on desktop
-  useEffect(() => {
-    if (!activeId && filteredConversations.length > 0 && window.innerWidth >= 768) {
-      setActiveId(filteredConversations[0]._id || filteredConversations[0].id);
-    }
-  }, [filteredConversations, activeId]);
+  // Filter conversations by search and enforce activeTab role
+  const filteredConversations = conversations
+    .filter((c) => c.role === activeTab)
+    .filter((c) => {
+      const contactName = c.otherUser?.name || "";
+      const itemTitle = c.listing?.title || "";
+      const term = searchTerm.toLowerCase();
+      return contactName.toLowerCase().includes(term) || itemTitle.toLowerCase().includes(term);
+    });
 
   return (
     <div className="py-6 sm:py-8 min-h-[calc(100vh-160px)]">
@@ -276,7 +299,7 @@ export default function MessagesPage() {
               Messages & Inquiries
             </h1>
             <p className="text-xs sm:text-sm text-[var(--color-muted-grey)] mt-1">
-              Direct, encrypted messaging to coordinate rental pickups, deliveries, and handover details.
+              Direct messaging to coordinate rental pickups, deliveries, and handover details.
             </p>
           </div>
 
@@ -481,8 +504,8 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          {/* Right Column: Active Chat Feed */}
-          {activeId && activeConv ? (
+          {/* Right Column: Active Chat Feed (Only rendered if conversation role matches activeTab) */}
+          {activeId && activeConv && activeConv.role === activeTab ? (
             <div className={`flex flex-col bg-[var(--color-surface)] ${activeId ? "flex" : "hidden md:flex"}`}>
               {/* Thread Header with Counterparty & Item details */}
               <div className="px-5 py-3.5 border-b border-[var(--color-border-subtle)] flex items-center justify-between gap-3 bg-[var(--color-surface)]">
@@ -511,9 +534,19 @@ export default function MessagesPage() {
                     </div>
                     <div className="text-[11px] text-[var(--color-muted-grey)] truncate flex items-center gap-1.5 mt-0.5">
                       <span>Regarding:</span>
-                      <span className="font-semibold text-[var(--color-espresso)] truncate">
-                        {activeConv.listing?.title || "Item"}
-                      </span>
+                      {activeConv.listing?._id ? (
+                        <Link
+                          to={`/listings/${activeConv.listing._id}`}
+                          className="font-semibold text-[var(--color-espresso)] hover:text-[var(--color-brand-primary)] hover:underline truncate"
+                          title="View item details in this browser"
+                        >
+                          {activeConv.listing?.title || "Item"}
+                        </Link>
+                      ) : (
+                        <span className="font-semibold text-[var(--color-espresso)] truncate">
+                          {activeConv.listing?.title || "Item"}
+                        </span>
+                      )}
                       {activeConv.listing?.rentalPricePerDay && (
                         <span className="text-[var(--color-brand-primary)] font-bold shrink-0">
                           (₹{activeConv.listing.rentalPricePerDay}/day)
@@ -523,7 +556,7 @@ export default function MessagesPage() {
                   </div>
                 </div>
 
-                {/* Right Header Badges */}
+                {/* Right Header Badges & View Listing Arrow */}
                 <div className="flex items-center gap-2 shrink-0">
                   {activeConv.booking && (
                     <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
@@ -533,10 +566,9 @@ export default function MessagesPage() {
                   )}
                   {activeConv.listing?._id && (
                     <Link
-                      to={`/listing/${activeConv.listing._id}`}
-                      target="_blank"
-                      className="p-2 rounded-xl text-[var(--color-muted-grey)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-espresso)] transition-colors"
-                      title="View listing details"
+                      to={`/listings/${activeConv.listing._id}`}
+                      className="p-2 rounded-xl text-[var(--color-muted-grey)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-brand-primary)] transition-colors"
+                      title="View item details in this browser"
                     >
                       <ExternalLink size={16} />
                     </Link>
@@ -669,10 +701,12 @@ export default function MessagesPage() {
                 <MessageSquare size={32} />
               </div>
               <h3 className="font-bold text-base text-[var(--color-espresso)]">
-                Select a conversation
+                {activeTab === "renting" ? "No Rental Chat Selected" : "No Host Chat Selected"}
               </h3>
               <p className="text-xs text-[var(--color-muted-grey)] mt-1 max-w-sm leading-relaxed">
-                Choose a chat from the left column to coordinate handover, or start a new inquiry directly from any rental listing.
+                {activeTab === "renting"
+                  ? "Select an inquiry from the left to coordinate your rental pickup with the host."
+                  : "Select a renter's inquiry from the left to coordinate handover details for your gear."}
               </p>
             </div>
           )}
