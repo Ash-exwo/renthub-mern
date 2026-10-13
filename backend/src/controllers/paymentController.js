@@ -29,6 +29,12 @@ exports.createCheckoutSession = async (req, res) => {
       return res.status(403).json({ message: "Access denied: you are not the renter for this booking." });
     }
 
+    if (booking.status === "pending") {
+      return res.status(400).json({
+        message: "Cannot pay yet: host must review and approve the booking request first.",
+      });
+    }
+
     if (["rejected", "cancelled"].includes(booking.status)) {
       return res.status(400).json({ message: `Cannot pay for a booking that is ${booking.status}.` });
     }
@@ -97,6 +103,12 @@ exports.processPayment = async (req, res) => {
 
     if (booking.paymentStatus === "escrow_held" || booking.paymentStatus === "payout_released") {
       return res.status(400).json({ message: "This booking is already paid and funded in escrow." });
+    }
+
+    if (booking.status === "pending") {
+      return res.status(400).json({
+        message: "Cannot pay yet: host must review and approve the booking request first.",
+      });
     }
 
     if (["rejected", "cancelled"].includes(booking.status)) {

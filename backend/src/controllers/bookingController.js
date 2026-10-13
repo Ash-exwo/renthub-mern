@@ -318,6 +318,11 @@ exports.updateBookingStatus = async (req, res) => {
             message: `As owner, you can only mark a confirmed booking as completed.`,
           });
         }
+        if (booking.paymentStatus !== "escrow_held") {
+          return res.status(400).json({
+            message: "Cannot mark booking as completed: renter has not secured payment into escrow yet.",
+          });
+        }
       }
 
       // If owner is confirming, double-check for concurrent confirmed overlap!

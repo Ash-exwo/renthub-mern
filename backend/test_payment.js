@@ -89,7 +89,45 @@ async function runPaymentTests() {
     console.log("\n1. Created Test Booking:          ", bookingRes.status === 201 ? "✅ PASS" : "❌ FAIL", `(ID: ${bookingRes.data?.booking?._id})`);
     const bookingId = bookingRes.data?.booking?._id;
 
-    // 2. Prepare checkout session as Renter
+    // 2. Option 1 Safeguard: Block payment while booking is still pending host approval
+    const prematurePayRes = await req(
+      "/payments/process",
+      "POST",
+      { bookingId, paymentMethod: "card" },
+      abhiToken
+    );
+    console.log(
+      "2. Block Unapproved Payment (400):",
+      prematurePayRes.status === 400 ? "✅ PASS" : `❌ FAIL (${prematurePayRes.status})`,
+      `"${prematurePayRes.data?.message}"`
+    );
+
+    // 3. Host Approves Booking (status: confirmed)
+    const approveRes = await req(
+      `/bookings/${bookingId}/status`,
+      "PATCH",
+      { status: "confirmed" },
+      ashToken
+    );
+    console.log(
+      "3. Host Confirmed Booking:        ",
+      approveRes.status === 200 ? "✅ PASS" : `❌ FAIL (${approveRes.status})`
+    );
+
+    // 4. Option 1 Safeguard: Block host marking completed before escrow payment is secured
+    const prematureCompleteRes = await req(
+      `/bookings/${bookingId}/status`,
+      "PATCH",
+      { status: "completed" },
+      ashToken
+    );
+    console.log(
+      "4. Block Unpaid Completion (400): ",
+      prematureCompleteRes.status === 400 ? "✅ PASS" : `❌ FAIL (${prematureCompleteRes.status})`,
+      `"${prematureCompleteRes.data?.message}"`
+    );
+
+    // 5. Prepare checkout session as Renter for approved booking
     const sessionRes = await req(
       "/payments/checkout-session",
       "POST",
@@ -97,12 +135,12 @@ async function runPaymentTests() {
       abhiToken
     );
     console.log(
-      "2. Renter Checkout Session:       ",
+      "5. Renter Checkout Session:       ",
       sessionRes.status === 200 ? "✅ PASS" : `❌ FAIL (${sessionRes.status})`,
       `Total: ₹${sessionRes.data?.breakdown?.totalAmount}`
     );
 
-    // 3. Process test-mode card payment
+    // 6. Process test-mode card payment into Escrow
     const processRes = await req(
       "/payments/process",
       "POST",
@@ -117,12 +155,12 @@ async function runPaymentTests() {
       abhiToken
     );
     console.log(
-      "3. Process Payment & Hold Escrow: ",
+      "6. Process Payment & Hold Escrow: ",
       processRes.status === 200 ? "✅ PASS" : `❌ FAIL (${processRes.status})`,
       `Txn: ${processRes.data?.transactionId} | Escrow: ${processRes.data?.payment?.escrowStatus}`
     );
 
-    // 4. Test double-payment prevention
+    // 7. Test double-payment prevention
     const doublePayRes = await req(
       "/payments/process",
       "POST",
@@ -130,39 +168,33 @@ async function runPaymentTests() {
       abhiToken
     );
     console.log(
-      "4. Double-Payment Blocked (400):  ",
+      "7. Double-Payment Blocked (400):  ",
       doublePayRes.status === 400 ? "✅ PASS" : `❌ FAIL (${doublePayRes.status})`,
       `"${doublePayRes.data?.message}"`
     );
 
-    // 5. Fetch payment receipt as Renter
+    // 8. Fetch payment receipt as Renter & Owner
     const receiptRes = await req(`/payments/booking/${bookingId}`, "GET", null, abhiToken);
+    const ownerReceiptRes = await req(`/payments/booking/${bookingId}`, "GET", null, ashToken);
     console.log(
-      "5. Renter View Receipt:           ",
-      receiptRes.status === 200 && receiptRes.data?.hasPaid ? "✅ PASS" : "❌ FAIL",
+      "8. Renter & Owner View Receipts:  ",
+      receiptRes.status === 200 && ownerReceiptRes.status === 200 && receiptRes.data?.hasPaid ? "✅ PASS" : "❌ FAIL",
       `Deposit: ${receiptRes.data?.depositStatus}`
     );
 
-    // 6. Fetch payment receipt as Owner
-    const ownerReceiptRes = await req(`/payments/booking/${bookingId}`, "GET", null, ashToken);
-    console.log(
-      "6. Owner View Escrow Receipt:     ",
-      ownerReceiptRes.status === 200 && ownerReceiptRes.data?.hasPaid ? "✅ PASS" : "❌ FAIL"
-    );
-
-    // 7. Test automated cancellation refund: Renter cancels booking
+    // 9. Test automated cancellation refund: Renter cancels booking
     const cancelRes = await req(
       `/bookings/${bookingId}/status`,
       "PATCH",
       { status: "cancelled", reason: "Need to reschedule" },
       abhiToken
     );
-    console.log("7. Renter Cancelled Booking:      ", cancelRes.status === 200 ? "✅ PASS" : "❌ FAIL");
+    console.log("9. Renter Cancelled Booking:      ", cancelRes.status === 200 ? "✅ PASS" : "❌ FAIL");
 
-    // Verify payment is marked refunded
+    // 10. Verify payment is marked refunded
     const refundedReceipt = await req(`/payments/booking/${bookingId}`, "GET", null, abhiToken);
     console.log(
-      "8. Automated Escrow Refund:       ",
+      "10. Automated Escrow Refund:      ",
       refundedReceipt.data?.payment?.status === "refunded" &&
         refundedReceipt.data?.escrowStatus === "refunded_to_renter"
         ? "✅ PASS"
@@ -171,7 +203,7 @@ async function runPaymentTests() {
     );
 
     console.log("\n=======================================================");
-    console.log("       🎉 All 8 Payment & Escrow Tests Passed!        ");
+    console.log("    🎉 All 10 Option 1 Payment & Escrow Tests Passed! ");
     console.log("=======================================================\n");
   } finally {
     if (internalServer) {

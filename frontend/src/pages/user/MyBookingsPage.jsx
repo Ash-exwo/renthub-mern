@@ -237,9 +237,9 @@ export default function MyBookingsPage() {
                             <CheckCircle2 size={12} /> Completed · Deposit Returned
                           </span>
                         )}
-                        {b.paymentStatus === "unpaid" && (b.status === "pending" || b.status === "confirmed") && (
+                        {b.paymentStatus === "unpaid" && b.status === "confirmed" && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
-                            <CreditCard size={12} /> Payment Pending
+                            <CreditCard size={12} /> Action Required: Pay Escrow
                           </span>
                         )}
                       </div>
@@ -274,6 +274,31 @@ export default function MyBookingsPage() {
                         </div>
                       </div>
 
+                      {/* Option 1 Guidance callouts */}
+                      {b.status === "pending" && (
+                        <div className="mt-2.5 text-xs text-[var(--color-muted-grey)] bg-[var(--color-surface-secondary)]/60 border border-[var(--color-border-subtle)] p-2 rounded-lg flex items-center gap-2">
+                          <Clock size={13} className="shrink-0 text-amber-500" />
+                          <span>Your request has been sent to {ownerName}. You will not be charged until the host reviews and accepts.</span>
+                        </div>
+                      )}
+
+                      {b.status === "confirmed" && b.paymentStatus === "unpaid" && (
+                        <div className="mt-2.5 text-xs text-emerald-800 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-lg flex items-start gap-2">
+                          <CheckCircle2 size={15} className="shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
+                          <div>
+                            <strong className="font-semibold">Host Accepted Your Request!</strong>
+                            <span> Complete payment now to secure escrow and finalize your booking before handover.</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {b.status === "confirmed" && b.paymentStatus === "escrow_held" && (
+                        <div className="mt-2.5 text-xs text-blue-800 dark:text-blue-300 bg-blue-500/10 border border-blue-500/20 p-2 rounded-lg flex items-center gap-2">
+                          <ShieldCheck size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
+                          <span>Escrow secured! Coordinate with host for handover on {formatDate(b.startDate)}.</span>
+                        </div>
+                      )}
+
                       {b.rejectionReason && b.status === "rejected" && (
                         <div className="mt-2 text-xs text-red-600 dark:text-red-400 bg-red-500/10 p-2 rounded-lg">
                           Decline note: {b.rejectionReason}
@@ -293,18 +318,19 @@ export default function MyBookingsPage() {
                       </div>
 
                       <div className="flex gap-2 flex-wrap">
-                        {/* Escrow Payment or Receipt */}
-                        {b.paymentStatus === "unpaid" && (b.status === "pending" || b.status === "confirmed") ? (
+                        {/* Option 1: Escrow Payment only available once confirmed */}
+                        {b.status === "confirmed" && b.paymentStatus === "unpaid" && (
                           <Button
                             variant="primary"
                             size="sm"
                             icon={CreditCard}
                             onClick={() => setCheckoutBookingId(b._id)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-semibold"
                           >
                             Pay & Secure Escrow
                           </Button>
-                        ) : b.paymentStatus && b.paymentStatus !== "unpaid" ? (
+                        )}
+                        {b.paymentStatus && b.paymentStatus !== "unpaid" && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -313,7 +339,7 @@ export default function MyBookingsPage() {
                           >
                             Escrow Receipt
                           </Button>
-                        ) : null}
+                        )}
 
                         <Button
                           variant="outline"

@@ -355,7 +355,7 @@ export default function OwnerDashboardPage() {
                             <CheckCircle2 size={12} /> Payout Released
                           </span>
                         )}
-                        {req.paymentStatus === "unpaid" && (req.status === "pending" || req.status === "confirmed") && (
+                        {req.paymentStatus === "unpaid" && req.status === "confirmed" && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
                             <CreditCard size={12} /> Awaiting Escrow
                           </span>
@@ -393,6 +393,26 @@ export default function OwnerDashboardPage() {
                       {req.notes && (
                         <div className="mt-2 text-xs italic text-[var(--color-espresso)] bg-indigo-500/5 p-2 rounded-lg border border-indigo-500/10">
                           Renter message: "{req.notes}"
+                        </div>
+                      )}
+
+                      {/* Option 1 Handover Guard Notice */}
+                      {isConfirmed && req.paymentStatus === "unpaid" && (
+                        <div className="mt-2.5 text-xs text-amber-800 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg flex items-start gap-2">
+                          <AlertCircle size={15} className="shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                          <div>
+                            <strong className="font-semibold">Awaiting Renter Escrow:</strong>
+                            <span> Do NOT hand over the item yet. Handover should only take place once the renter deposits funds into platform escrow.</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {isConfirmed && req.paymentStatus === "escrow_held" && (
+                        <div className="mt-2.5 text-xs text-emerald-800 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-lg flex items-center gap-2">
+                          <ShieldCheck size={15} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          <span>
+                            <strong className="font-semibold">Escrow Secured:</strong> Payment & deposit are safely held by RentHub. You may safely hand over the item to the renter.
+                          </span>
                         </div>
                       )}
                     </div>
@@ -435,17 +455,36 @@ export default function OwnerDashboardPage() {
 
                       {isConfirmed && (
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-emerald-600 inline-flex items-center gap-1">
-                            <CheckCircle2 size={14} /> Confirmed
-                          </span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            loading={isProcessing}
-                            onClick={() => handleMarkCompleted(req._id)}
-                          >
-                            Mark Completed
-                          </Button>
+                          {req.paymentStatus === "escrow_held" ? (
+                            <>
+                              <span className="text-xs font-bold text-emerald-600 inline-flex items-center gap-1">
+                                <CheckCircle2 size={14} /> Confirmed
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                loading={isProcessing}
+                                onClick={() => handleMarkCompleted(req._id)}
+                              >
+                                Mark Completed
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-xs font-bold text-amber-600 inline-flex items-center gap-1">
+                                <Clock size={14} /> Accepted · Awaiting Escrow
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled
+                                title="Escrow payment must be funded before completing rental"
+                                className="opacity-50 cursor-not-allowed text-xs"
+                              >
+                                Mark Completed
+                              </Button>
+                            </>
+                          )}
                         </div>
                       )}
 
