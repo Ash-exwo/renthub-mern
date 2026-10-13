@@ -23,6 +23,7 @@ const notificationSchema = new mongoose.Schema(
         "payment_escrow_funded",
         "rental_completed",
         "payout_released",
+        "review_received",
         "general",
       ],
       default: "general",

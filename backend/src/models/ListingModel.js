@@ -100,6 +100,19 @@ const listingSchema = new mongoose.Schema(
       },
     ],
 
+    // Aggregate review metrics (calculated automatically)
+    averageRating: {
+      type: Number,
+      default: 0,
+      min: [0, "Average rating cannot be negative."],
+      max: [5, "Average rating cannot exceed 5."],
+    },
+    totalReviews: {
+      type: Number,
+      default: 0,
+      min: [0, "Total reviews count cannot be negative."],
+    },
+
     // Owner reference (User)
     owner: {
       type: mongoose.Schema.Types.ObjectId,

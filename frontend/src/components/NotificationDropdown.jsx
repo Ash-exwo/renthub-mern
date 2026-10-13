@@ -89,6 +89,12 @@ export default function NotificationDropdown() {
           bg: "bg-emerald-500/10",
           color: "text-emerald-600 dark:text-emerald-400",
         };
+      case "review_received":
+        return {
+          icon: Star,
+          bg: "bg-amber-500/10",
+          color: "text-amber-500 dark:text-amber-400",
+        };
       default:
         return {
           icon: Bell,

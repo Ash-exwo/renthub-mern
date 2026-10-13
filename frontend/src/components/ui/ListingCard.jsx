@@ -23,8 +23,13 @@ export function ListingCard({
     location = "",
     images = [],
     availability = "available",
-    rating = 4.8,
+    averageRating = 0,
+    totalReviews = 0,
+    rating = averageRating,
   } = listing;
+
+  const displayRating = averageRating || rating || 0;
+  const reviewsCount = totalReviews || listing.reviewsCount || 0;
 
   const itemId = _id || id;
   const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=60";
@@ -168,7 +173,13 @@ export function ListingCard({
                 {title || "Untitled Listing"}
               </h3>
               <div className="shrink-0 pt-0.5">
-                <Rating score={rating} showCount={false} />
+                {reviewsCount > 0 ? (
+                  <Rating score={displayRating} reviewsCount={reviewsCount} showCount={true} />
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-md">
+                    ★ New
+                  </span>
+                )}
               </div>
             </div>
 

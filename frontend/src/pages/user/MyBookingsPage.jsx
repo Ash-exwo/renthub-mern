@@ -25,6 +25,7 @@ import {
 } from "../../components/ui";
 import RentHubCheckoutModal from "../../components/RentHubCheckoutModal";
 import PaymentReceiptModal from "../../components/PaymentReceiptModal";
+import ReviewModal from "../../components/ReviewModal";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800&auto=format&fit=crop&q=60";
@@ -44,10 +45,9 @@ export default function MyBookingsPage() {
   const [checkoutBookingId, setCheckoutBookingId] = useState(null);
   const [receiptBookingId, setReceiptBookingId] = useState(null);
 
+  const [bookingToReview, setBookingToReview] = useState(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [reviewRating, setReviewRating] = useState(5);
-  const [reviewText, setReviewText] = useState("");
-  const [reviewSuccess, setReviewSuccess] = useState(false);
+  const [reviewedBookings, setReviewedBookings] = useState({});
 
   const fetchBookings = async () => {
     setLoading(true);
@@ -56,6 +56,23 @@ export default function MyBookingsPage() {
       const res = await api.get("/bookings/my-rentals");
       if (res.data?.bookings) {
         setBookings(res.data.bookings);
+        const completed = res.data.bookings.filter((b) => b.status === "completed");
+        if (completed.length > 0) {
+          Promise.all(
+            completed.map((b) =>
+              api
+                .get(`/reviews/booking/${b._id}`)
+                .then((r) => (r.data?.hasReviewed ? { id: b._id, review: r.data.review } : null))
+                .catch(() => null)
+            )
+          ).then((results) => {
+            const map = {};
+            results.forEach((item) => {
+              if (item) map[item.id] = item.review;
+            });
+            setReviewedBookings((prev) => ({ ...prev, ...map }));
+          });
+        }
       }
     } catch (err) {
       setError(
@@ -132,15 +149,17 @@ export default function MyBookingsPage() {
   };
 
   const handleOpenReview = (booking) => {
-    setSelectedBooking(booking);
+    setBookingToReview(booking);
     setReviewModalOpen(true);
-    setReviewSuccess(false);
-    setReviewText("");
   };
 
-  const handleSubmitReview = (e) => {
-    e.preventDefault();
-    setReviewSuccess(true);
+  const handleReviewSubmitted = (newReview) => {
+    if (bookingToReview) {
+      setReviewedBookings((prev) => ({
+        ...prev,
+        [bookingToReview._id]: newReview,
+      }));
+    }
   };
 
   const formatDate = (dateStr) => {
@@ -361,14 +380,22 @@ export default function MyBookingsPage() {
                         )}
 
                         {b.status === "completed" && (
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            icon={Star}
-                            onClick={() => handleOpenReview(b)}
-                          >
-                            Rate Rental
-                          </Button>
+                          reviewedBookings[b._id] ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 shadow-xs">
+                              <Star size={13} className="fill-amber-400 text-amber-400" />
+                              <span>Reviewed ({reviewedBookings[b._id].rating}★)</span>
+                            </span>
+                          ) : (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              icon={Star}
+                              onClick={() => handleOpenReview(b)}
+                              className="bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-sm"
+                            >
+                              Leave a Review
+                            </Button>
+                          )
                         )}
 
                         {b.status === "confirmed" && (
@@ -533,77 +560,16 @@ export default function MyBookingsPage() {
         </div>
       </Modal>
 
-      {/* Review Modal */}
-      <Modal
+      {/* Verified Reviews & Ratings Modal */}
+      <ReviewModal
         isOpen={reviewModalOpen}
-        onClose={() => setReviewModalOpen(false)}
-        title="Rate & Review Rental"
-      >
-        {reviewSuccess ? (
-          <div className="text-center py-6">
-            <CheckCircle2 size={40} className="text-emerald-600 mx-auto mb-3" />
-            <h3 className="text-lg font-bold text-[var(--color-espresso)] mb-1">
-              Thank you for your review!
-            </h3>
-            <p className="text-xs text-[var(--color-muted-grey)] mb-6">
-              Your feedback builds trust across the RentHub community.
-            </p>
-            <Button variant="primary" onClick={() => setReviewModalOpen(false)}>
-              Done
-            </Button>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmitReview} className="flex flex-col gap-5">
-            <div>
-              <label className="text-xs font-semibold text-[var(--color-espresso)] block mb-2">
-                Overall Rating
-              </label>
-              <div className="flex gap-1.5">
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setReviewRating(s)}
-                    className="p-1 cursor-pointer bg-transparent border-none"
-                  >
-                    <Star
-                      size={28}
-                      className={
-                        s <= reviewRating
-                          ? "fill-amber-400 text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.5)]"
-                          : "text-slate-300 dark:text-slate-600"
-                      }
-                    />
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-[var(--color-espresso)] block mb-2">
-                Your Review Comments
-              </label>
-              <textarea
-                rows={4}
-                required
-                value={reviewText}
-                onChange={(e) => setReviewText(e.target.value)}
-                placeholder="Share details about item condition, handover, and experience..."
-                className="w-full p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-primary)]"
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <Button variant="outline" fullWidth onClick={() => setReviewModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" fullWidth>
-                Submit Review
-              </Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+        onClose={() => {
+          setReviewModalOpen(false);
+          setBookingToReview(null);
+        }}
+        booking={bookingToReview}
+        onReviewSubmitted={handleReviewSubmitted}
+      />
 
       {/* Interactive RentHub Escrow Checkout Modal */}
       <RentHubCheckoutModal

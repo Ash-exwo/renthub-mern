@@ -18,6 +18,7 @@ import {
   CalendarDays,
   CalendarX,
   CreditCard,
+  Star,
 } from "lucide-react";
 import api from "../../utils/api";
 import { isLoggedIn, getUser } from "../../utils/auth";
@@ -60,6 +61,32 @@ export default function ListingDetailPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [mobileCalendarOpen, setMobileCalendarOpen] = useState(false);
+
+  const [reviewsData, setReviewsData] = useState({
+    reviews: [],
+    totalReviews: 0,
+    averageRating: 0,
+    breakdown: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+  });
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!id) return;
+    async function fetchReviews() {
+      setReviewsLoading(true);
+      try {
+        const res = await api.get(`/reviews/listing/${id}`);
+        if (res.data) {
+          setReviewsData(res.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch reviews:", err);
+      } finally {
+        setReviewsLoading(false);
+      }
+    }
+    fetchReviews();
+  }, [id]);
 
   const images =
     listing?.images && listing.images.length > 0
@@ -544,6 +571,139 @@ export default function ListingDetailPage() {
                 minDate={today}
               />
             </div>
+
+            {/* Verified Reviews & Ratings Section */}
+            <div
+              className="flex flex-col gap-6 pt-6 border-t border-[var(--color-border-subtle)]"
+              id="reviews-section"
+            >
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                    <Star size={20} className="fill-amber-400 text-amber-400" />
+                  </div>
+                  <div>
+                    <h2 className="font-[var(--font-heading)] text-lg sm:text-xl font-bold text-[var(--color-espresso)] flex items-center gap-2">
+                      <span>Verified Reviews</span>
+                      {reviewsData.totalReviews > 0 && (
+                        <span className="text-sm font-extrabold text-[var(--color-brand-primary)]">
+                          · {Number(reviewsData.averageRating || 0).toFixed(1)} ★
+                        </span>
+                      )}
+                    </h2>
+                    <p className="text-xs text-[var(--color-muted-grey)]">
+                      {reviewsData.totalReviews === 0
+                        ? "No verified reviews yet"
+                        : `Based on ${reviewsData.totalReviews} verified rental${reviewsData.totalReviews === 1 ? "" : "s"}`}
+                    </p>
+                  </div>
+                </div>
+
+                {reviewsData.totalReviews > 0 && (
+                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 inline-flex items-center gap-1.5">
+                    <ShieldCheck size={14} /> 100% Verified Renters
+                  </span>
+                )}
+              </div>
+
+              {/* Star Breakdown Histogram */}
+              {reviewsData.totalReviews > 0 && (
+                <div className="p-4 sm:p-5 rounded-2xl bg-[var(--color-surface-secondary)]/60 border border-[var(--color-border)] flex flex-col gap-2">
+                  {[5, 4, 3, 2, 1].map((stars) => {
+                    const count = reviewsData.breakdown?.[stars] || 0;
+                    const pct = reviewsData.totalReviews > 0 ? (count / reviewsData.totalReviews) * 100 : 0;
+                    return (
+                      <div key={stars} className="flex items-center gap-3 text-xs">
+                        <span className="w-12 font-bold text-[var(--color-espresso)] flex items-center gap-1">
+                          <span>{stars}</span>
+                          <Star size={11} className="fill-amber-400 text-amber-400" />
+                        </span>
+                        <div className="flex-1 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                          <div
+                            className="h-full bg-amber-400 rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="w-8 text-right font-mono text-[11px] text-[var(--color-muted-grey)]">
+                          {count}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Reviews List */}
+              {reviewsLoading ? (
+                <div className="py-8 text-center text-xs text-[var(--color-muted-grey)]">
+                  Loading verified reviews...
+                </div>
+              ) : reviewsData.reviews && reviewsData.reviews.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {reviewsData.reviews.map((rev) => (
+                    <div
+                      key={rev._id}
+                      className="p-4 sm:p-5 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xs flex flex-col gap-3"
+                    >
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-[var(--color-brand-primary)]/10 text-[var(--color-brand-primary)] font-bold text-xs flex items-center justify-center shrink-0 overflow-hidden">
+                            {rev.reviewer?.avatar ? (
+                              <img
+                                src={rev.reviewer.avatar}
+                                alt={rev.reviewer?.name || "Renter"}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              (rev.reviewer?.name || "R")[0].toUpperCase()
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-bold text-xs text-[var(--color-espresso)]">
+                              {rev.reviewer?.name || "Verified Renter"}
+                            </div>
+                            <div className="text-[10px] text-[var(--color-muted-grey)]">
+                              {new Date(rev.createdAt).toLocaleDateString("en-IN", {
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Star
+                              key={s}
+                              size={13}
+                              className={
+                                s <= rev.rating
+                                  ? "fill-amber-400 text-amber-400"
+                                  : "fill-transparent text-gray-300 dark:text-gray-700"
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-[var(--color-secondary-text)] leading-relaxed">
+                        "{rev.comment}"
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 px-4 rounded-2xl bg-[var(--color-surface-secondary)]/40 border border-dashed border-[var(--color-border)] text-center flex flex-col items-center justify-center gap-2">
+                  <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                    <Star size={18} />
+                  </div>
+                  <h4 className="font-bold text-sm text-[var(--color-espresso)]">No Reviews Yet</h4>
+                  <p className="text-xs text-[var(--color-muted-grey)] max-w-sm">
+                    Be the first verified renter to complete a reservation and leave feedback for this listing!
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Column: Sticky Booking Card (Desktop) */}
@@ -551,7 +711,17 @@ export default function ListingDetailPage() {
             <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-6 shadow-xl flex flex-col gap-5 hover:border-[var(--color-brand-primary)]/30 transition-all">
               <div className="flex justify-between items-baseline">
                 <PriceDisplay price={dailyRate} period="day" size="lg" />
-                <Rating score={listing.rating || 4.9} showCount={false} />
+                {reviewsData.totalReviews > 0 ? (
+                  <Rating
+                    score={reviewsData.averageRating}
+                    reviewsCount={reviewsData.totalReviews}
+                    showCount={true}
+                  />
+                ) : (
+                  <span className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                    ★ New
+                  </span>
+                )}
               </div>
 
               {/* Date pickers with calendar sync */}
