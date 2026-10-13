@@ -8,7 +8,8 @@
     "dev": "nodemon src/server.js",
     "test:payment": "node test_payment.js",
     "test:notifications": "node test_notifications.js",
-    "test:reviews": "node test_reviews.js"
+    "test:reviews": "node test_reviews.js",
+    "test:messages": "node test_messages.js"
   },
   "keywords": [],
   "author": "",

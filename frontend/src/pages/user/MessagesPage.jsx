@@ -1,348 +1,689 @@
-import React, { useState, useEffect } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import {
   Send,
   Search,
   ShieldCheck,
   MessageSquare,
+  ArrowLeft,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Sparkles,
+  Tag,
+  ExternalLink,
+  Loader2,
+  Info,
 } from "lucide-react";
 import Container from "../../components/Container";
-import { Button } from "../../components/ui";
+import { Button, Badge } from "../../components/ui";
+import ChatSafetyModal from "../../components/ChatSafetyModal";
 import api from "../../utils/api";
+import { isLoggedIn, getUser } from "../../utils/auth";
 
 export default function MessagesPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const currentUser = getUser();
+
   const targetBookingId = searchParams.get("bookingId");
-  const targetUser = searchParams.get("targetUser");
-  const targetListing = searchParams.get("listingTitle");
+  const targetListingId = searchParams.get("listingId");
+  const targetOwnerId = searchParams.get("ownerId");
+  const targetConvId = searchParams.get("conversationId");
+  const initialTab = searchParams.get("tab") || "renting";
 
-  const [conversations, setConversations] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("renthub_conversations") || "[]");
-    } catch {
-      return [];
-    }
-  });
+  // State: Tab ("renting" vs "hosting")
+  const [activeTab, setActiveTab] = useState(initialTab === "hosting" ? "hosting" : "renting");
 
-  const [activeId, setActiveId] = useState(() => conversations[0]?.id || null);
+  // State: Conversations and active thread
+  const [conversations, setConversations] = useState([]);
+  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [activeId, setActiveId] = useState(targetConvId || null);
+  const [activeConv, setActiveConv] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+
+  // State: Input & search
   const [inputText, setInputText] = useState("");
+  const [sending, setSending] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Initialize or activate specific chat thread from query parameters (e.g. from bookings page)
-  useEffect(() => {
-    if (targetBookingId) {
-      const convId = `conv-${targetBookingId}`;
-      setConversations((prev) => {
-        const existing = prev.find((c) => c.id === convId);
-        if (existing) {
-          setActiveId(convId);
-          return prev;
-        }
+  // State: Unread counters for both tabs
+  const [tabStats, setTabStats] = useState({ rentingUnread: 0, hostingUnread: 0 });
 
-        const newConv = {
-          id: convId,
-          bookingId: targetBookingId,
-          user: targetUser || "Rental Contact",
-          listing: targetListing || "Rental Item",
-          lastMessage: "Chat started for rental handover.",
-          time: "Just now",
-          messages: [
-            {
-              id: `msg-${Date.now()}-1`,
-              sender: targetUser || "Host",
-              text: `Hello! Regarding "${targetListing || "the item"}": What time and handover location work best for you?`,
-              time: "Just now",
-              isMe: false,
-            },
-          ],
-        };
+  // State: Safety guidelines modal
+  const [safetyModalOpen, setSafetyModalOpen] = useState(false);
 
-        const updated = [newConv, ...prev];
-        try {
-          localStorage.setItem("renthub_conversations", JSON.stringify(updated));
-        } catch {}
-        setActiveId(convId);
-        return updated;
-      });
-    }
-  }, [targetBookingId, targetUser, targetListing]);
+  const messagesEndRef = useRef(null);
+  const isInitialMount = useRef(true);
 
-  // If no conversations exist, check user's bookings to auto-populate chats
-  useEffect(() => {
-    if (conversations.length === 0 && !targetBookingId) {
-      async function seedFromBookings() {
-        try {
-          const [rentalsRes, requestsRes] = await Promise.all([
-            api.get("/bookings/my-rentals").catch(() => ({ data: { bookings: [] } })),
-            api.get("/bookings/owner-requests").catch(() => ({ data: { bookings: [] } })),
-          ]);
-
-          const allBookings = [
-            ...(rentalsRes.data?.bookings || []),
-            ...(requestsRes.data?.bookings || []),
-          ].filter((b) => b.status === "confirmed" || b.status === "completed" || b.status === "pending");
-
-          if (allBookings.length > 0) {
-            const seeded = allBookings.map((b) => {
-              const otherUser = b.renter?.name || b.owner?.name || "Rental Partner";
-              return {
-                id: `conv-${b._id}`,
-                bookingId: b._id,
-                user: otherUser,
-                listing: b.listing?.title || "Rental Asset",
-                lastMessage: `Rental status: ${b.status}. Ready to coordinate meetup.`,
-                time: "Today",
-                messages: [
-                  {
-                    id: `msg-${b._id}-1`,
-                    sender: otherUser,
-                    text: `Hi! Let's coordinate pickup and return details for "${b.listing?.title}".`,
-                    time: "Today",
-                    isMe: false,
-                  },
-                ],
-              };
-            });
-
-            setConversations(seeded);
-            setActiveId(seeded[0]?.id || null);
-            try {
-              localStorage.setItem("renthub_conversations", JSON.stringify(seeded));
-            } catch {}
-          }
-        } catch {}
-      }
-      seedFromBookings();
-    }
-  }, [conversations.length, targetBookingId]);
-
-  const activeConv = conversations.find((c) => c.id === activeId) || conversations[0] || null;
-
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!inputText.trim() || !activeConv) return;
-
-    const userText = inputText.trim();
-    const newMsg = {
-      id: `msg-${Date.now()}`,
-      sender: "Me",
-      text: userText,
-      time: "Just now",
-      isMe: true,
-    };
-
-    const updated = conversations.map((c) => {
-      if (c.id === activeConv.id) {
-        return {
-          ...c,
-          lastMessage: userText,
-          time: "Just now",
-          messages: [...(c.messages || []), newMsg],
-        };
-      }
-      return c;
-    });
-
-    setConversations(updated);
-    try {
-      localStorage.setItem("renthub_conversations", JSON.stringify(updated));
-    } catch {}
-
-    setInputText("");
-
-    // Simulate friendly auto-reply after 1.5s for realistic testing
-    setTimeout(() => {
-      setConversations((current) => {
-        const targeted = current.find((c) => c.id === activeConv.id);
-        if (!targeted) return current;
-
-        const replyMsg = {
-          id: `msg-${Date.now()}-reply`,
-          sender: targeted.user,
-          text: `Got your message: "${userText}". Sounds good, see you then!`,
-          time: "Just now",
-          isMe: false,
-        };
-
-        const withReply = current.map((c) => {
-          if (c.id === targeted.id) {
-            return {
-              ...c,
-              lastMessage: replyMsg.text,
-              time: "Just now",
-              messages: [...(c.messages || []), replyMsg],
-            };
-          }
-          return c;
-        });
-
-        try {
-          localStorage.setItem("renthub_conversations", JSON.stringify(withReply));
-        } catch {}
-        return withReply;
-      });
-    }, 1500);
+  // Scroll to bottom of message thread
+  const scrollToBottom = (behavior = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
-  const filteredConversations = conversations.filter(
-    (c) =>
-      c.user?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.listing?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Check safety modal acceptance on initial visit
+  useEffect(() => {
+    try {
+      const accepted = localStorage.getItem("renthub_chat_safety_accepted");
+      if (!accepted) {
+        setSafetyModalOpen(true);
+      }
+    } catch {}
+  }, []);
+
+  // Fetch conversations for the active tab and calculate tab stats
+  const fetchConversations = useCallback(async (tabToFetch = activeTab) => {
+    try {
+      const [currentRes, allRes] = await Promise.all([
+        api.get(`/messages/conversations?role=${tabToFetch}`),
+        api.get(`/messages/conversations`),
+      ]);
+
+      if (currentRes.data?.success) {
+        setConversations(currentRes.data.conversations || []);
+      }
+
+      if (allRes.data?.conversations) {
+        const allList = allRes.data.conversations;
+        const rentingCount = allList
+          .filter((c) => c.role === "renting")
+          .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+        const hostingCount = allList
+          .filter((c) => c.role === "hosting")
+          .reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+
+        setTabStats({
+          rentingUnread: rentingCount,
+          hostingUnread: hostingCount,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load conversations:", err);
+    } finally {
+      setLoadingConversations(false);
+    }
+  }, [activeTab]);
+
+  // Fetch messages for active conversation
+  const fetchMessages = useCallback(async (convId, isBackground = false) => {
+    if (!convId) return;
+    if (!isBackground) setLoadingMessages(true);
+
+    try {
+      const res = await api.get(`/messages/conversation/${convId}`);
+      if (res.data?.success) {
+        setMessages(res.data.messages || []);
+        setActiveConv(res.data.conversation);
+      }
+    } catch (err) {
+      console.error("Failed to load messages:", err);
+    } finally {
+      if (!isBackground) setLoadingMessages(false);
+    }
+  }, []);
+
+  // Initialize from query parameters (bookingId or listingId)
+  useEffect(() => {
+    if (!isLoggedIn()) {
+      navigate("/login?redirect=/messages");
+      return;
+    }
+
+    async function initFromParams() {
+      if (targetBookingId || targetListingId || targetConvId) {
+        try {
+          if (targetConvId) {
+            setActiveId(targetConvId);
+            return;
+          }
+
+          const initRes = await api.post("/messages/conversations/init", {
+            bookingId: targetBookingId || undefined,
+            listingId: targetListingId || undefined,
+            ownerId: targetOwnerId || undefined,
+          });
+
+          if (initRes.data?.success && initRes.data.conversation) {
+            const conv = initRes.data.conversation;
+            setActiveId(conv._id || conv.id);
+            if (conv.role) {
+              setActiveTab(conv.role);
+            }
+          }
+        } catch (err) {
+          console.error("Error auto-initializing conversation:", err);
+        }
+      }
+    }
+
+    initFromParams();
+  }, [targetBookingId, targetListingId, targetConvId, targetOwnerId, navigate]);
+
+  // Load conversations on mount & tab switch
+  useEffect(() => {
+    fetchConversations(activeTab);
+  }, [activeTab, fetchConversations]);
+
+  // Load messages when activeId changes
+  useEffect(() => {
+    if (activeId) {
+      fetchMessages(activeId);
+      // Also update conversations to clear unread
+      fetchConversations(activeTab);
+    }
+  }, [activeId, fetchMessages, activeTab, fetchConversations]);
+
+  // Auto-scroll on initial message load or new message
+  useEffect(() => {
+    if (messages.length > 0) {
+      scrollToBottom(isInitialMount.current ? "auto" : "smooth");
+      isInitialMount.current = false;
+    }
+  }, [messages.length]);
+
+  // Real-time Background Polling & Window Focus sync (every 3.5s)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchConversations(activeTab);
+      if (activeId) {
+        fetchMessages(activeId, true);
+      }
+    }, 3500);
+
+    const handleFocus = () => {
+      fetchConversations(activeTab);
+      if (activeId) {
+        fetchMessages(activeId, true);
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleFocus);
+    };
+  }, [activeTab, activeId, fetchConversations, fetchMessages]);
+
+  // Handle Tab Switch
+  const handleTabChange = (newTab) => {
+    setActiveTab(newTab);
+    setSearchTerm("");
+    // If current active conversation is not in this tab, reset active conversation
+    const foundInNewTab = conversations.find((c) => c.role === newTab);
+    if (!foundInNewTab) {
+      setActiveId(null);
+      setActiveConv(null);
+      setMessages([]);
+    }
+  };
+
+  // Send Message
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!inputText.trim() || !activeId || sending) return;
+
+    const textToSend = inputText.trim();
+    setInputText("");
+    setSending(true);
+
+    try {
+      const res = await api.post("/messages", {
+        conversationId: activeId,
+        text: textToSend,
+      });
+
+      if (res.data?.success && res.data.message) {
+        setMessages((prev) => [...prev, res.data.message]);
+        scrollToBottom("smooth");
+        // Refresh conversations to update lastMessage
+        fetchConversations(activeTab);
+      }
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      // Revert text on error
+      setInputText(textToSend);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Filter conversations by search
+  const filteredConversations = conversations.filter((c) => {
+    const contactName = c.otherUser?.name || "";
+    const itemTitle = c.listing?.title || "";
+    const term = searchTerm.toLowerCase();
+    return contactName.toLowerCase().includes(term) || itemTitle.toLowerCase().includes(term);
+  });
+
+  // Automatically pick first conversation if none selected on desktop
+  useEffect(() => {
+    if (!activeId && filteredConversations.length > 0 && window.innerWidth >= 768) {
+      setActiveId(filteredConversations[0]._id || filteredConversations[0].id);
+    }
+  }, [filteredConversations, activeId]);
 
   return (
-    <div className="py-6 sm:py-10 min-h-[calc(100vh-180px)]">
+    <div className="py-6 sm:py-8 min-h-[calc(100vh-160px)]">
       <Container>
-        <div className="mb-6">
-          <h1 className="font-[var(--font-heading)] text-2xl sm:text-3xl font-extrabold text-[var(--color-espresso)]">
-            Messages & Inquiries
-          </h1>
-          <p className="text-xs sm:text-sm text-[var(--color-muted-grey)] mt-1">
-            Chat with owners and renters to coordinate pickup, delivery, and handover details.
-          </p>
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="font-[var(--font-heading)] text-2xl sm:text-3xl font-extrabold text-[var(--color-espresso)]">
+              Messages & Inquiries
+            </h1>
+            <p className="text-xs sm:text-sm text-[var(--color-muted-grey)] mt-1">
+              Direct, encrypted messaging to coordinate rental pickups, deliveries, and handover details.
+            </p>
+          </div>
+
+          {/* Safety Guidelines Trigger Button */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            icon={ShieldCheck}
+            onClick={() => setSafetyModalOpen(true)}
+            className="self-start sm:self-auto text-emerald-700 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+          >
+            Safety Guidelines
+          </Button>
         </div>
 
-        {conversations.length === 0 ? (
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-sm p-12 text-center flex flex-col items-center justify-center max-w-md mx-auto my-8">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 text-indigo-600 grid place-items-center mb-4">
-              <MessageSquare size={32} />
-            </div>
-            <h2 className="font-extrabold text-lg text-[var(--color-espresso)]">No Messages Yet</h2>
-            <p className="text-xs text-[var(--color-muted-grey)] mt-1.5 leading-relaxed">
-              When you inquire about a rental or receive messages from renters regarding your assets, your chats will appear here in real time.
-            </p>
-            <Link to="/explore" className="mt-5">
-              <Button variant="primary" size="md">
-                Browse Available Rentals
-              </Button>
-            </Link>
-          </div>
-        ) : (
-          /* Messaging Split Screen */
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xl h-[560px] grid grid-cols-1 md:grid-cols-[300px_1fr] overflow-hidden">
-            {/* Left Column: Inbox List */}
-            <div className="border-r border-[var(--color-border-subtle)] flex flex-col bg-[var(--color-surface-subtle)]">
-              <div className="p-3.5 border-b border-[var(--color-border-subtle)]">
-                <div className="font-bold text-sm text-[var(--color-espresso)] mb-2">Conversations</div>
-                <div className="relative">
-                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted-grey)]" />
-                  <input
-                    type="text"
-                    placeholder="Search chats..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-espresso)] focus:outline-none"
-                  />
-                </div>
-              </div>
+        {/* 2-Section Segmented Tab Switcher: Renting vs Hosting */}
+        <div className="flex items-center gap-2 p-1.5 bg-[var(--color-surface-subtle)] rounded-2xl border border-[var(--color-border-subtle)] max-w-md mb-6">
+          <button
+            type="button"
+            onClick={() => handleTabChange("renting")}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+              activeTab === "renting"
+                ? "bg-[var(--color-surface)] text-[var(--color-espresso)] shadow-md border border-[var(--color-border)]"
+                : "text-[var(--color-muted-grey)] hover:text-[var(--color-espresso)]"
+            }`}
+          >
+            <span>🎒 Renting</span>
+            <span className="text-[11px] font-normal text-[var(--color-muted-grey)] hidden sm:inline">
+              (As Renter)
+            </span>
+            {tabStats.rentingUnread > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[var(--color-brand-primary)] text-white animate-pulse">
+                {tabStats.rentingUnread}
+              </span>
+            )}
+          </button>
 
-              <div className="flex-1 overflow-y-auto divide-y divide-[var(--color-border-subtle)]">
-                {filteredConversations.map((conv) => {
-                  const isActive = conv.id === activeId;
+          <button
+            type="button"
+            onClick={() => handleTabChange("hosting")}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+              activeTab === "hosting"
+                ? "bg-[var(--color-surface)] text-[var(--color-espresso)] shadow-md border border-[var(--color-border)]"
+                : "text-[var(--color-muted-grey)] hover:text-[var(--color-espresso)]"
+            }`}
+          >
+            <span>🏠 Hosting</span>
+            <span className="text-[11px] font-normal text-[var(--color-muted-grey)] hidden sm:inline">
+              (As Host)
+            </span>
+            {tabStats.hostingUnread > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-white animate-pulse">
+                {tabStats.hostingUnread}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Messaging Container */}
+        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xl h-[620px] grid grid-cols-1 md:grid-cols-[340px_1fr] overflow-hidden">
+          {/* Left Column: Inbox List */}
+          <div
+            className={`border-r border-[var(--color-border-subtle)] flex flex-col bg-[var(--color-surface-subtle)] ${
+              activeId ? "hidden md:flex" : "flex"
+            }`}
+          >
+            {/* Inbox Search & Count */}
+            <div className="p-4 border-b border-[var(--color-border-subtle)] space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-xs uppercase tracking-wider text-[var(--color-muted-grey)]">
+                  {activeTab === "renting" ? "Items You're Renting" : "Inquiries on Your Gear"}
+                </span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[var(--color-surface-secondary)] text-[var(--color-espresso)]">
+                  {filteredConversations.length}
+                </span>
+              </div>
+              <div className="relative">
+                <Search
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted-grey)]"
+                />
+                <input
+                  type="text"
+                  placeholder="Search by name or item..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-espresso)] focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-primary)]"
+                />
+              </div>
+            </div>
+
+            {/* Conversation Items List */}
+            <div className="flex-1 overflow-y-auto divide-y divide-[var(--color-border-subtle)]">
+              {loadingConversations ? (
+                <div className="p-8 text-center text-xs text-[var(--color-muted-grey)] flex flex-col items-center gap-2">
+                  <Loader2 size={24} className="animate-spin text-[var(--color-brand-primary)]" />
+                  <span>Loading conversations...</span>
+                </div>
+              ) : filteredConversations.length === 0 ? (
+                <div className="p-8 text-center flex flex-col items-center justify-center h-full">
+                  <div className="w-12 h-12 rounded-2xl bg-[var(--color-surface-secondary)] text-[var(--color-muted-grey)] grid place-items-center mb-3">
+                    <MessageSquare size={24} />
+                  </div>
+                  <h3 className="font-bold text-xs text-[var(--color-espresso)]">
+                    {activeTab === "renting" ? "No Rental Chats Yet" : "No Host Inquiries Yet"}
+                  </h3>
+                  <p className="text-[11px] text-[var(--color-muted-grey)] mt-1 max-w-[200px] leading-relaxed">
+                    {activeTab === "renting"
+                      ? "When you message hosts or book items to rent, your conversations will show here."
+                      : "When renters inquire about your equipment or book items, their chats appear here."}
+                  </p>
+                  {activeTab === "renting" ? (
+                    <Link to="/explore" className="mt-4">
+                      <Button variant="outline" size="sm">
+                        Browse Gear
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Link to="/owner/dashboard" className="mt-4">
+                      <Button variant="outline" size="sm">
+                        Go to Host Dashboard
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                filteredConversations.map((conv) => {
+                  const isSelected = (conv._id || conv.id) === activeId;
+                  const otherUser = conv.otherUser || { name: "Rental Partner" };
+                  const listing = conv.listing || {};
+                  const unread = conv.unreadCount || 0;
+
                   return (
                     <div
-                      key={conv.id}
-                      onClick={() => setActiveId(conv.id)}
-                      className={`p-3.5 cursor-pointer transition-colors flex gap-3 items-center ${
-                        isActive
-                          ? "bg-[var(--color-surface)] border-l-3 border-l-[var(--color-brand-primary)]"
-                          : "hover:bg-[var(--color-surface-hover)] border-l-3 border-l-transparent"
+                      key={conv._id || conv.id}
+                      onClick={() => setActiveId(conv._id || conv.id)}
+                      className={`p-3.5 cursor-pointer transition-all flex gap-3 items-center relative ${
+                        isSelected
+                          ? "bg-[var(--color-surface)] border-l-4 border-l-[var(--color-brand-primary)] shadow-xs"
+                          : "hover:bg-[var(--color-surface-hover)] border-l-4 border-l-transparent"
                       }`}
                     >
-                      <div className="w-10 h-10 rounded-full bg-[var(--color-surface-secondary)] text-[var(--color-brand-primary)] font-bold text-sm grid place-items-center shrink-0">
-                        {conv.avatar || conv.user?.charAt(0) || "U"}
+                      {/* Avatar / Listing Thumbnail */}
+                      <div className="relative shrink-0">
+                        {listing.images && listing.images[0] ? (
+                          <img
+                            src={listing.images[0]}
+                            alt={listing.title}
+                            className="w-11 h-11 rounded-xl object-cover border border-[var(--color-border)] shadow-xs"
+                          />
+                        ) : (
+                          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 text-indigo-700 dark:text-indigo-300 font-extrabold text-sm grid place-items-center border border-indigo-500/30">
+                            {otherUser.name?.charAt(0) || "U"}
+                          </div>
+                        )}
+                        {unread > 0 && (
+                          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--color-brand-primary)] text-white text-[9px] font-extrabold grid place-items-center shadow-sm">
+                            {unread}
+                          </span>
+                        )}
                       </div>
 
+                      {/* Conversation Details */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-baseline">
-                          <span className="font-bold text-xs text-[var(--color-espresso)]">{conv.user}</span>
-                          <span className="text-[10px] text-[var(--color-muted-grey)]">{conv.time}</span>
+                        <div className="flex justify-between items-baseline mb-0.5">
+                          <span
+                            className={`font-bold text-xs truncate ${
+                              unread > 0 ? "text-[var(--color-espresso)] font-extrabold" : "text-[var(--color-espresso)]"
+                            }`}
+                          >
+                            {otherUser.name}
+                          </span>
+                          <span className="text-[10px] text-[var(--color-muted-grey)] shrink-0 ml-2">
+                            {conv.lastMessageAt
+                              ? new Date(conv.lastMessageAt).toLocaleDateString([], {
+                                  month: "short",
+                                  day: "numeric",
+                                })
+                              : ""}
+                          </span>
                         </div>
-                        <div className="text-[11px] text-[var(--color-brand-primary)] font-semibold truncate">
-                          {conv.listing}
+
+                        <div className="text-[11px] font-medium text-[var(--color-brand-primary)] truncate">
+                          {listing.title || "Rental Item"}
                         </div>
-                        <div className="text-xs text-[var(--color-secondary-text)] truncate mt-0.5">
-                          {conv.lastMessage}
+
+                        <div
+                          className={`text-xs truncate mt-0.5 ${
+                            unread > 0
+                              ? "text-[var(--color-espresso)] font-bold"
+                              : "text-[var(--color-muted-grey)]"
+                          }`}
+                        >
+                          {conv.lastMessage || "Started conversation"}
                         </div>
                       </div>
                     </div>
                   );
-                })}
-              </div>
+                })
+              )}
             </div>
+          </div>
 
-            {/* Right Column: Active Thread */}
-            {activeConv ? (
-              <div className="flex flex-col bg-[var(--color-surface)]">
-                {/* Thread Header */}
-                <div className="px-5 py-3 border-b border-[var(--color-border-subtle)] flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[var(--color-surface-secondary)] text-[var(--color-brand-primary)] font-bold text-xs grid place-items-center">
-                      {activeConv.avatar || activeConv.user?.charAt(0) || "U"}
-                    </div>
-                    <div>
-                      <div className="font-bold text-sm text-[var(--color-espresso)]">{activeConv.user}</div>
-                      <div className="text-[11px] text-[var(--color-muted-grey)]">
-                        Regarding: {activeConv.listing}
-                      </div>
-                    </div>
+          {/* Right Column: Active Chat Feed */}
+          {activeId && activeConv ? (
+            <div className={`flex flex-col bg-[var(--color-surface)] ${activeId ? "flex" : "hidden md:flex"}`}>
+              {/* Thread Header with Counterparty & Item details */}
+              <div className="px-5 py-3.5 border-b border-[var(--color-border-subtle)] flex items-center justify-between gap-3 bg-[var(--color-surface)]">
+                <div className="flex items-center gap-3 min-w-0">
+                  {/* Mobile Back Button */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveId(null)}
+                    className="md:hidden p-1.5 -ml-1 rounded-lg text-[var(--color-muted-grey)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
+                  >
+                    <ArrowLeft size={18} />
+                  </button>
+
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 text-indigo-700 dark:text-indigo-300 font-extrabold text-sm grid place-items-center shrink-0 border border-indigo-500/30">
+                    {activeConv.otherUser?.name?.charAt(0) || "U"}
                   </div>
 
-                  <div className="hidden sm:flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
-                    <ShieldCheck size={16} />
-                    <span>Verified Escrow Chat</span>
-                  </div>
-                </div>
-
-                {/* Messages Feed */}
-                <div className="flex-1 p-5 overflow-y-auto flex flex-col gap-3">
-                  {(activeConv.messages || []).map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`max-w-[75%] flex flex-col ${
-                        msg.isMe ? "self-end items-end" : "self-start items-start"
-                      }`}
-                    >
-                      <div
-                        className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed ${
-                          msg.isMe
-                            ? "bg-[var(--color-brand-primary)] text-white rounded-br-xs"
-                            : "bg-[var(--color-surface-secondary)] text-[var(--color-espresso)] rounded-bl-xs"
-                        }`}
-                      >
-                        {msg.text}
-                      </div>
-                      <span className="text-[10px] text-[var(--color-muted-grey)] mt-1 px-1">
-                        {msg.time}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-sm text-[var(--color-espresso)] truncate">
+                        {activeConv.otherUser?.name || "Rental Contact"}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                        {activeConv.role === "renting" ? "Host" : "Renter"}
                       </span>
                     </div>
-                  ))}
+                    <div className="text-[11px] text-[var(--color-muted-grey)] truncate flex items-center gap-1.5 mt-0.5">
+                      <span>Regarding:</span>
+                      <span className="font-semibold text-[var(--color-espresso)] truncate">
+                        {activeConv.listing?.title || "Item"}
+                      </span>
+                      {activeConv.listing?.rentalPricePerDay && (
+                        <span className="text-[var(--color-brand-primary)] font-bold shrink-0">
+                          (₹{activeConv.listing.rentalPricePerDay}/day)
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Message Input Footer */}
-                <form
-                  onSubmit={handleSendMessage}
-                  className="p-3 border-t border-[var(--color-border-subtle)] flex gap-2 items-center"
+                {/* Right Header Badges */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {activeConv.booking && (
+                    <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                      <Calendar size={12} />
+                      <span className="capitalize">{activeConv.booking.status}</span>
+                    </span>
+                  )}
+                  {activeConv.listing?._id && (
+                    <Link
+                      to={`/listing/${activeConv.listing._id}`}
+                      target="_blank"
+                      className="p-2 rounded-xl text-[var(--color-muted-grey)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-espresso)] transition-colors"
+                      title="View listing details"
+                    >
+                      <ExternalLink size={16} />
+                    </Link>
+                  )}
+                </div>
+              </div>
+
+              {/* Booking Context Banner (if linked) */}
+              {activeConv.booking && (
+                <div className="px-5 py-2.5 bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-transparent border-b border-[var(--color-border-subtle)] flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 text-[var(--color-muted-grey)]">
+                    <Clock size={13} className="text-indigo-600" />
+                    <span>
+                      Dates:{" "}
+                      <strong className="text-[var(--color-espresso)]">
+                        {new Date(activeConv.booking.startDate).toLocaleDateString([], {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </strong>{" "}
+                      –{" "}
+                      <strong className="text-[var(--color-espresso)]">
+                        {new Date(activeConv.booking.endDate).toLocaleDateString([], {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </strong>
+                    </span>
+                    {activeConv.booking.totalAmount && (
+                      <span className="text-emerald-600 font-bold ml-1">
+                        (₹{activeConv.booking.totalAmount})
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-semibold">
+                    <ShieldCheck size={14} />
+                    <span className="hidden sm:inline">Escrow Protected</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Message Feed */}
+              <div className="flex-1 p-5 overflow-y-auto flex flex-col gap-3 bg-[var(--color-surface-subtle)]">
+                {loadingMessages ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-xs text-[var(--color-muted-grey)] gap-2">
+                    <Loader2 size={24} className="animate-spin text-[var(--color-brand-primary)]" />
+                    <span>Loading messages...</span>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-xs text-[var(--color-muted-grey)]">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 grid place-items-center mb-3">
+                      <Sparkles size={22} />
+                    </div>
+                    <div className="font-bold text-sm text-[var(--color-espresso)]">
+                      Start Your Conversation
+                    </div>
+                    <p className="mt-1 max-w-xs leading-relaxed text-[11px]">
+                      Ask about pickup timing, equipment accessories, return location, or any details before rental handover.
+                    </p>
+                  </div>
+                ) : (
+                  messages.map((msg) => {
+                    const timeStr = msg.createdAt
+                      ? new Date(msg.createdAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "Just now";
+
+                    return (
+                      <div
+                        key={msg._id || msg.id}
+                        className={`max-w-[78%] flex flex-col ${
+                          msg.isMe ? "self-end items-end" : "self-start items-start"
+                        }`}
+                      >
+                        <div
+                          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-xs break-words ${
+                            msg.isMe
+                              ? "bg-[var(--color-brand-primary)] text-white rounded-br-xs font-medium"
+                              : "bg-[var(--color-surface)] text-[var(--color-espresso)] border border-[var(--color-border)] rounded-bl-xs"
+                          }`}
+                        >
+                          {msg.text}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-[var(--color-muted-grey)] mt-1 px-1">
+                          <span>{timeStr}</span>
+                          {msg.isMe && (
+                            <span className="text-[10px]">
+                              {msg.isRead ? "✓✓ Read" : "✓ Sent"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Message Input Footer */}
+              <form
+                onSubmit={handleSendMessage}
+                className="p-3 sm:p-4 border-t border-[var(--color-border-subtle)] bg-[var(--color-surface)] flex gap-2 items-center"
+              >
+                <input
+                  type="text"
+                  placeholder={`Message ${activeConv.otherUser?.name || "partner"}...`}
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  disabled={sending}
+                  className="flex-1 px-4 py-2.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-subtle)] text-xs sm:text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-primary)] transition-all"
+                />
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  icon={Send}
+                  disabled={!inputText.trim() || sending}
+                  className="rounded-full! shrink-0 shadow-md"
                 >
-                  <input
-                    type="text"
-                    placeholder="Type your message to host..."
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    className="flex-1 px-4 py-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] text-xs sm:text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-primary)]"
-                  />
-                  <Button type="submit" variant="primary" size="md" icon={Send} className="rounded-full!">
-                    Send
-                  </Button>
-                </form>
+                  {sending ? <Loader2 size={16} className="animate-spin" /> : "Send"}
+                </Button>
+              </form>
+            </div>
+          ) : (
+            <div className="hidden md:flex flex-col items-center justify-center p-12 text-center bg-[var(--color-surface)]">
+              <div className="w-16 h-16 rounded-3xl bg-[var(--color-surface-secondary)] text-[var(--color-muted-grey)] grid place-items-center mb-4">
+                <MessageSquare size={32} />
               </div>
-            ) : (
-              <div className="flex items-center justify-center flex-1 text-xs text-[var(--color-muted-grey)]">
-                Select a conversation to start chatting.
-              </div>
-            )}
-          </div>
-        )}
+              <h3 className="font-bold text-base text-[var(--color-espresso)]">
+                Select a conversation
+              </h3>
+              <p className="text-xs text-[var(--color-muted-grey)] mt-1 max-w-sm leading-relaxed">
+                Choose a chat from the left column to coordinate handover, or start a new inquiry directly from any rental listing.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* OLX-style Safety Tips Modal */}
+        <ChatSafetyModal
+          isOpen={safetyModalOpen}
+          onClose={() => setSafetyModalOpen(false)}
+          onAccept={() => setSafetyModalOpen(false)}
+        />
       </Container>
     </div>
   );

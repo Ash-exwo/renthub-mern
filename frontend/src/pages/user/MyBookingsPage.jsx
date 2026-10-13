@@ -423,7 +423,7 @@ export default function MyBookingsPage() {
 
                         {(b.status === "confirmed" || b.status === "completed") && (
                           <Link
-                            to={`/messages?bookingId=${b._id}&targetUser=${encodeURIComponent(ownerName)}&listingTitle=${encodeURIComponent(listingTitle)}`}
+                            to={`/messages?bookingId=${b._id}&targetUser=${encodeURIComponent(ownerName)}&listingTitle=${encodeURIComponent(listingTitle)}&tab=renting`}
                           >
                             <Button variant="secondary" size="sm" icon={MessageSquare}>
                               Chat Host
@@ -521,7 +521,7 @@ export default function MyBookingsPage() {
                 Close
               </Button>
               <Link
-                to={`/messages?bookingId=${selectedBooking._id}&targetUser=${encodeURIComponent(selectedBooking.owner?.name || "Host")}&listingTitle=${encodeURIComponent(selectedBooking.listing?.title || "Item")}`}
+                to={`/messages?bookingId=${selectedBooking._id}&targetUser=${encodeURIComponent(selectedBooking.owner?.name || "Host")}&listingTitle=${encodeURIComponent(selectedBooking.listing?.title || "Item")}&tab=renting`}
                 className="w-full"
               >
                 <Button variant="primary" fullWidth icon={MessageSquare}>

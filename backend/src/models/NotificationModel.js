@@ -24,6 +24,7 @@ const notificationSchema = new mongoose.Schema(
         "rental_completed",
         "payout_released",
         "review_received",
+        "new_message",
         "general",
       ],
       default: "general",

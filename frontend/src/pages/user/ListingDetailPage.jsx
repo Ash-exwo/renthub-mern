@@ -19,6 +19,7 @@ import {
   CalendarX,
   CreditCard,
   Star,
+  MessageSquare,
 } from "lucide-react";
 import api from "../../utils/api";
 import { isLoggedIn, getUser } from "../../utils/auth";
@@ -857,15 +858,35 @@ export default function ListingDetailPage() {
                   </Button>
                 </Link>
               ) : (
-                <Button
-                  variant="primary"
-                  size="lg"
-                  fullWidth
-                  disabled={Boolean(dateConflict)}
-                  onClick={() => setBookingModalOpen(true)}
-                >
-                  {dateConflict ? "Selected Dates Unavailable" : "Reserve Rental"}
-                </Button>
+                <div className="flex flex-col gap-2.5">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    fullWidth
+                    disabled={Boolean(dateConflict)}
+                    onClick={() => setBookingModalOpen(true)}
+                  >
+                    {dateConflict ? "Selected Dates Unavailable" : "Reserve Rental"}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="md"
+                    fullWidth
+                    icon={MessageSquare}
+                    onClick={() => {
+                      if (!loggedIn) {
+                        navigate("/login", {
+                          state: { from: `/listing/${id}`, notice: "Please log in to chat with the host." },
+                        });
+                        return;
+                      }
+                      navigate(`/messages?listingId=${id}&ownerId=${ownerId}&tab=renting`);
+                    }}
+                  >
+                    Chat with Host
+                  </Button>
+                </div>
               )}
 
               <div className="text-center text-[11px] text-[var(--color-muted-grey)]">
@@ -901,14 +922,32 @@ export default function ListingDetailPage() {
             </Button>
           </Link>
         ) : (
-          <Button
-            variant="primary"
-            size="md"
-            disabled={Boolean(dateConflict)}
-            onClick={() => setBookingModalOpen(true)}
-          >
-            {dateConflict ? "Unavailable" : "Reserve"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="md"
+              icon={MessageSquare}
+              onClick={() => {
+                if (!loggedIn) {
+                  navigate("/login", {
+                    state: { from: `/listing/${id}`, notice: "Please log in to chat with the host." },
+                  });
+                  return;
+                }
+                navigate(`/messages?listingId=${id}&ownerId=${ownerId}&tab=renting`);
+              }}
+            >
+              Chat
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              disabled={Boolean(dateConflict)}
+              onClick={() => setBookingModalOpen(true)}
+            >
+              {dateConflict ? "Unavailable" : "Reserve"}
+            </Button>
+          </div>
         )}
       </div>
 

@@ -14,6 +14,7 @@ import {
   Trash2,
   Loader2,
   RotateCcw,
+  MessageSquare,
 } from "lucide-react";
 import Container from "../../components/Container";
 import { Button, Tabs } from "../../components/ui";
@@ -115,6 +116,12 @@ export default function NotificationsPage() {
           icon: Star,
           bg: "bg-amber-500/10",
           color: "text-amber-500 dark:text-amber-400",
+        };
+      case "new_message":
+        return {
+          icon: MessageSquare,
+          bg: "bg-blue-500/10",
+          color: "text-blue-600 dark:text-blue-400",
         };
       default:
         return {

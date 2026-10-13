@@ -13,6 +13,7 @@ import {
   Trash2,
   ExternalLink,
   Loader2,
+  MessageSquare,
 } from "lucide-react";
 import api from "../utils/api";
 import { isLoggedIn } from "../utils/auth";
@@ -94,6 +95,12 @@ export default function NotificationDropdown() {
           icon: Star,
           bg: "bg-amber-500/10",
           color: "text-amber-500 dark:text-amber-400",
+        };
+      case "new_message":
+        return {
+          icon: MessageSquare,
+          bg: "bg-blue-500/10",
+          color: "text-blue-600 dark:text-blue-400",
         };
       default:
         return {

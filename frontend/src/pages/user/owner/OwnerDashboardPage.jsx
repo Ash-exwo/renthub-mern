@@ -496,7 +496,7 @@ export default function OwnerDashboardPage() {
 
                       {(isConfirmed || req.status === "completed") && (
                         <Link
-                          to={`/messages?bookingId=${req._id}&targetUser=${encodeURIComponent(renterName)}&listingTitle=${encodeURIComponent(listingTitle)}`}
+                          to={`/messages?bookingId=${req._id}&targetUser=${encodeURIComponent(renterName)}&listingTitle=${encodeURIComponent(listingTitle)}&tab=hosting`}
                         >
                           <Button variant="secondary" size="sm" icon={MessageSquare}>
                             Chat Renter
