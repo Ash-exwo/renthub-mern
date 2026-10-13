@@ -9,7 +9,8 @@
     "test:payment": "node test_payment.js",
     "test:notifications": "node test_notifications.js",
     "test:reviews": "node test_reviews.js",
-    "test:messages": "node test_messages.js"
+    "test:messages": "node test_messages.js",
+    "test:reports": "node test_reports.js"
   },
   "keywords": [],
   "author": "",

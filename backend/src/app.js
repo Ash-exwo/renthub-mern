@@ -11,6 +11,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Global Error Handler (guarantees clean JSON response instead of HTML error pages)
 app.use((err, req, res, next) => {

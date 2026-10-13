@@ -20,6 +20,7 @@ import {
   CreditCard,
   Star,
   MessageSquare,
+  Flag,
 } from "lucide-react";
 import api from "../../utils/api";
 import { isLoggedIn, getUser } from "../../utils/auth";
@@ -34,6 +35,7 @@ import {
 import Container from "../../components/Container";
 import AvailabilityCalendarPicker from "../../components/AvailabilityCalendarPicker";
 import RentHubCheckoutModal from "../../components/RentHubCheckoutModal";
+import ReportListingModal from "../../components/ReportListingModal";
 
 export default function ListingDetailPage() {
   const { id } = useParams();
@@ -62,6 +64,7 @@ export default function ListingDetailPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [mobileCalendarOpen, setMobileCalendarOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const [reviewsData, setReviewsData] = useState({
     reviews: [],
@@ -709,6 +712,32 @@ export default function ListingDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Trust, Safety & Report Section */}
+            {!isOwner && (
+              <div className="pt-6 border-t border-[var(--color-border-subtle)] flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-2 text-xs text-[var(--color-muted-grey)]">
+                  <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
+                  <span>RentHub Escrow &amp; Community Trust Protection Guarantee</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!loggedIn) {
+                      navigate("/login", {
+                        state: { from: `/listings/${id}`, notice: "Please log in to report this listing." },
+                      });
+                      return;
+                    }
+                    setReportModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--color-muted-grey)] hover:text-rose-600 transition-colors cursor-pointer"
+                >
+                  <Flag size={14} />
+                  <span>Report this listing</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Right Column: Sticky Booking Card (Desktop) */}
@@ -1262,6 +1291,14 @@ export default function ListingDetailPage() {
         onSuccess={() => {
           navigate("/bookings");
         }}
+      />
+
+      {/* Trust & Safety Report Modal */}
+      <ReportListingModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        listingId={id}
+        listingTitle={listing?.title || "Item"}
       />
     </div>
   );

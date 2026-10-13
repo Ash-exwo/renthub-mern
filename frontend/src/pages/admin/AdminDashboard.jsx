@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Users,
@@ -24,6 +24,12 @@ import {
   Sun,
   Moon,
   Inbox,
+  ExternalLink,
+  ShieldAlert,
+  ShieldCheck,
+  Pause,
+  Eye,
+  FileText,
 } from "lucide-react";
 import api from "../../utils/api";
 import { getAdminToken, getAdminUser, adminLogout } from "../../utils/auth";
@@ -112,10 +118,14 @@ const INITIAL_NOTIFICATIONS = [
   },
 ];
 
-const INITIAL_REPORTS = [
-  { id: "r1", listing: "Beachfront Villa & Pool", reportedBy: "Rahul Nair", reason: "Misleading photos and inaccurate pricing", date: "2026-03-22", status: "Open" },
-  { id: "r2", listing: "DSLR Camera Kit & Lens", reportedBy: "Sneha Kapoor", reason: "Unresponsive host during booking request", date: "2026-03-21", status: "Resolved" },
-];
+const REPORT_CATEGORY_META = {
+  scam_off_platform: { label: "Off-Platform Scam", badge: "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20" },
+  misleading: { label: "Misleading Info", badge: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" },
+  safety_hazard: { label: "Safety Hazard", badge: "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20" },
+  prohibited: { label: "Prohibited Item", badge: "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20" },
+  abusive_conduct: { label: "Abusive Conduct", badge: "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20" },
+  other: { label: "Other Violation", badge: "bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20" },
+};
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -207,7 +217,24 @@ export default function AdminDashboard() {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [listings, setListings] = useState([]);
   const [loadingListings, setLoadingListings] = useState(false);
-  const [reports, setReports] = useState(INITIAL_REPORTS);
+  const [reports, setReports] = useState([]);
+  const [loadingReports, setLoadingReports] = useState(false);
+  const [reportCounts, setReportCounts] = useState({
+    total: 0,
+    pending: 0,
+    investigating: 0,
+    resolved: 0,
+    dismissed: 0,
+  });
+  const [reportFilter, setReportFilter] = useState("all");
+  const [actionModal, setActionModal] = useState({
+    open: false,
+    report: null,
+    nextStatus: "resolved",
+    actionTaken: "none",
+    adminNotes: "",
+    submitting: false,
+  });
 
   // Clear feedback banner after 4 seconds
   useEffect(() => {
@@ -296,12 +323,46 @@ export default function AdminDashboard() {
     }
   }, [handleLogout]);
 
+  // Fetch Reports from Backend API (Live MongoDB)
+  const fetchAdminReports = useCallback(async (filterParam) => {
+    const token = getAdminToken();
+    if (!token) return;
+
+    setLoadingReports(true);
+    try {
+      const activeFilt = filterParam !== undefined ? filterParam : reportFilter;
+      const statusQuery = activeFilt && activeFilt !== "all" ? `?status=${activeFilt}` : "";
+      const response = await api.get(`/reports/admin${statusQuery}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setReports(response.data?.reports || []);
+      if (response.data?.counts) {
+        setReportCounts(response.data.counts);
+      }
+    } catch (err) {
+      console.error("Failed to load admin reports:", err);
+      if (err.response?.status === 401) {
+        handleLogout();
+      }
+    } finally {
+      setLoadingReports(false);
+    }
+  }, [reportFilter, handleLogout]);
+
   // Load all live database entities on mount
   useEffect(() => {
     fetchAdminCategories();
     fetchAdminListings();
     fetchAdminUsers();
-  }, [fetchAdminCategories, fetchAdminListings, fetchAdminUsers]);
+    fetchAdminReports();
+  }, [fetchAdminCategories, fetchAdminListings, fetchAdminUsers, fetchAdminReports]);
+
+  // Re-fetch reports when filter changes
+  useEffect(() => {
+    if (activeTab === "reports") {
+      fetchAdminReports(reportFilter);
+    }
+  }, [reportFilter, activeTab, fetchAdminReports]);
 
   // Open Add Category Modal
   const openAddModal = () => {
@@ -568,10 +629,98 @@ export default function AdminDashboard() {
     }
   };
 
-  // Reports tab actions
-  const handleResolveReport = (id) => {
-    setReports((prev) => prev.map((r) => (r.id === id ? { ...r, status: "Resolved" } : r)));
+  // Moderation & Reports Handlers (Live MongoDB)
+  const handleReportAction = async (reportId, nextStatus, actionTaken = "none", adminNotes = "") => {
+    const token = getAdminToken();
+    if (!token) {
+      handleLogout();
+      return;
+    }
+
+    setActionModal((prev) => ({ ...prev, submitting: true }));
+
+    try {
+      const response = await api.patch(
+        `/reports/admin/${reportId}/action`,
+        { status: nextStatus, actionTaken, adminNotes },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setCategoryFeedback({
+        type: "success",
+        message: response.data?.message || "Report updated successfully.",
+      });
+
+      // Refresh both reports & listings (in case listing was paused)
+      fetchAdminReports();
+      fetchAdminListings();
+      setActionModal({
+        open: false,
+        report: null,
+        nextStatus: "resolved",
+        actionTaken: "none",
+        adminNotes: "",
+        submitting: false,
+      });
+    } catch (err) {
+      console.error("Failed to update report action:", err);
+      setCategoryFeedback({
+        type: "error",
+        message: err.response?.data?.message || "Failed to update report action.",
+      });
+      setActionModal((prev) => ({ ...prev, submitting: false }));
+    }
   };
+
+  const handleQuickPauseListing = async (report) => {
+    if (!report?.targetListing?._id && !report?.targetListing) return;
+    const confirmPause = window.confirm(
+      `Are you sure you want to pause listing "${report.targetListing?.title || "item"}" immediately? This will freeze the item on the live platform.`
+    );
+    if (!confirmPause) return;
+
+    await handleReportAction(
+      report._id,
+      "resolved",
+      "listing_paused",
+      "Listing paused immediately by administrator for safety review."
+    );
+  };
+
+  const handleQuickDismissReport = async (report) => {
+    await handleReportAction(report._id, "dismissed", "dismissed", "Dismissed without further action.");
+  };
+
+  const handleOpenActionModal = (report, defaultStatus = "resolved") => {
+    setActionModal({
+      open: true,
+      report,
+      nextStatus: defaultStatus,
+      actionTaken: report.actionTaken || "none",
+      adminNotes: report.adminNotes || "",
+      submitting: false,
+    });
+  };
+
+  // Filtered reports for search query
+  const filteredReports = useMemo(() => {
+    if (!searchQuery.trim()) return reports;
+    const q = searchQuery.toLowerCase();
+    return reports.filter((r) => {
+      const title = r.targetListing?.title || "";
+      const reporter = r.reporter?.name || "";
+      const owner = r.targetUser?.name || "";
+      const reason = r.reason || "";
+      const notes = r.adminNotes || "";
+      return (
+        title.toLowerCase().includes(q) ||
+        reporter.toLowerCase().includes(q) ||
+        owner.toLowerCase().includes(q) ||
+        reason.toLowerCase().includes(q) ||
+        notes.toLowerCase().includes(q)
+      );
+    });
+  }, [reports, searchQuery]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[var(--color-canvas)] text-[var(--color-espresso)] font-[var(--font-sans)] transition-colors duration-200">
@@ -629,7 +778,7 @@ export default function AdminDashboard() {
             { id: "categories", label: "Categories", icon: FolderTree },
             { id: "users", label: "Users Management", icon: Users },
             { id: "listings", label: "Listings Control", icon: Building2 },
-            { id: "reports", label: "Reports & Flags", icon: Flag },
+            { id: "reports", label: "Reports & Flags", icon: Flag, badge: reportCounts.pending },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -642,14 +791,25 @@ export default function AdminDashboard() {
                   setSearchQuery("");
                   setIsMobileMenuOpen(false);
                 }}
-                className={`flex items-center gap-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all cursor-pointer text-left ${
+                className={`flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-semibold transition-all cursor-pointer text-left ${
                   isActive
                     ? "bg-[var(--color-brand-primary)] text-white shadow-lg shadow-rose-500/25 font-bold"
                     : "text-[var(--color-secondary-text)] hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-subtle)]"
                 }`}
               >
-                <Icon size={18} />
-                <span>{tab.label}</span>
+                <div className="flex items-center gap-3.5">
+                  <Icon size={18} />
+                  <span>{tab.label}</span>
+                </div>
+                {Boolean(tab.badge && tab.badge > 0) && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-wider ${
+                      isActive ? "bg-white text-[var(--color-brand-primary)]" : "bg-rose-500 text-white shadow-xs"
+                    }`}
+                  >
+                    {tab.badge}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -719,6 +879,8 @@ export default function AdminDashboard() {
                 ? "Overview & Analytics"
                 : activeTab === "categories"
                 ? "Rental Categories"
+                : activeTab === "reports"
+                ? "Trust & Safety Moderation"
                 : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
             </h1>
           </div>
@@ -1655,56 +1817,332 @@ export default function AdminDashboard() {
           )}
 
           {/* ======================================================== */}
-          {/* TAB 5: REPORTS & FLAGS                                   */}
+          {/* TAB 5: REPORTS & FLAGS (Live MongoDB Content Moderation) */}
           {/* ======================================================== */}
           {activeTab === "reports" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              {/* TOP SUMMARY KPI CARDS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-[var(--color-surface)] p-5 rounded-3xl border border-[var(--color-border)] shadow-xs flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-rose-500 uppercase tracking-wider">Pending Review</span>
+                    <h3 className="text-2xl sm:text-3xl font-black text-[var(--color-espresso)] my-1 tracking-tight">
+                      {reportCounts.pending}
+                    </h3>
+                    <div className="text-xs text-slate-400 font-medium">Needs moderation action</div>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-600 grid place-items-center">
+                    <ShieldAlert size={22} />
+                  </div>
+                </div>
+
+                <div className="bg-[var(--color-surface)] p-5 rounded-3xl border border-[var(--color-border)] shadow-xs flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-amber-500 uppercase tracking-wider">Investigating</span>
+                    <h3 className="text-2xl sm:text-3xl font-black text-[var(--color-espresso)] my-1 tracking-tight">
+                      {reportCounts.investigating}
+                    </h3>
+                    <div className="text-xs text-slate-400 font-medium">Active inquiry</div>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 grid place-items-center">
+                    <Eye size={22} />
+                  </div>
+                </div>
+
+                <div className="bg-[var(--color-surface)] p-5 rounded-3xl border border-[var(--color-border)] shadow-xs flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-emerald-500 uppercase tracking-wider">Resolved Cases</span>
+                    <h3 className="text-2xl sm:text-3xl font-black text-[var(--color-espresso)] my-1 tracking-tight">
+                      {reportCounts.resolved}
+                    </h3>
+                    <div className="text-xs text-slate-400 font-medium">Addressed & audited</div>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 grid place-items-center">
+                    <ShieldCheck size={22} />
+                  </div>
+                </div>
+
+                <div className="bg-[var(--color-surface)] p-5 rounded-3xl border border-[var(--color-border)] shadow-xs flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Reports</span>
+                    <h3 className="text-2xl sm:text-3xl font-black text-[var(--color-espresso)] my-1 tracking-tight">
+                      {reportCounts.total}
+                    </h3>
+                    <div className="text-xs text-slate-400 font-medium">All flags filed</div>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-slate-500/10 border border-slate-500/20 text-slate-600 grid place-items-center">
+                    <Flag size={22} />
+                  </div>
+                </div>
+              </div>
+
+              {/* SEARCH & STATUS FILTER TOOLBAR */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="relative flex-1 max-w-md">
+                  <Search
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search by listing, reporter, host, or reason..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 focus:border-[var(--color-brand-primary)] transition-all font-medium"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Pills */}
+                <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-secondary)] rounded-2xl border border-[var(--color-border)] text-xs font-semibold overflow-x-auto">
+                  {[
+                    { id: "all", label: "All", count: reportCounts.total },
+                    { id: "pending", label: "Pending", count: reportCounts.pending },
+                    { id: "investigating", label: "Investigating", count: reportCounts.investigating },
+                    { id: "resolved", label: "Resolved", count: reportCounts.resolved },
+                    { id: "dismissed", label: "Dismissed", count: reportCounts.dismissed },
+                  ].map((filterTab) => (
+                    <button
+                      key={filterTab.id}
+                      type="button"
+                      onClick={() => setReportFilter(filterTab.id)}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                        reportFilter === filterTab.id
+                          ? "bg-[var(--color-surface)] text-[var(--color-brand-primary)] shadow-xs font-bold"
+                          : "text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)]"
+                      }`}
+                    >
+                      {filterTab.label} ({filterTab.count})
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => fetchAdminReports(reportFilter)}
+                    title="Refresh Reports"
+                    className="p-1.5 rounded-xl hover:bg-[var(--color-surface)] text-slate-500 hover:text-[var(--color-espresso)] transition-colors cursor-pointer"
+                  >
+                    <RefreshCw size={14} className={loadingReports ? "animate-spin" : ""} />
+                  </button>
+                </div>
+              </div>
+
+              {/* REPORTS TABLE */}
               <div className="bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] overflow-x-auto shadow-xs w-full">
-                <table className="w-full text-left border-collapse min-w-[600px] text-sm">
+                <table className="w-full text-left border-collapse min-w-[750px] text-sm">
                   <thead>
                     <tr className="bg-[var(--color-surface-secondary)] border-b border-[var(--color-border)] text-xs text-slate-400 uppercase tracking-wider font-black">
                       <th className="px-6 py-4">Target Listing</th>
                       <th className="px-6 py-4">Reported By</th>
-                      <th className="px-6 py-4">Reason</th>
+                      <th className="px-6 py-4">Violation & Reason</th>
                       <th className="px-6 py-4">Date</th>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4">Action</th>
+                      <th className="px-6 py-4">Status & Audit</th>
+                      <th className="px-6 py-4 text-right">Moderation Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {reports.map((rep) => (
-                      <tr
-                        key={rep.id}
-                        className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-subtle)] transition-colors"
-                      >
-                        <td className="px-6 py-4 font-bold text-[var(--color-espresso)]">{rep.listing}</td>
-                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">{rep.reportedBy}</td>
-                        <td className="px-6 py-4 text-rose-600 font-semibold">{rep.reason}</td>
-                        <td className="px-6 py-4 text-slate-500">{rep.date}</td>
-                        <td className="px-6 py-4">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                              rep.status === "Resolved"
-                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                                : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
-                            }`}
-                          >
-                            {rep.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          {rep.status === "Open" && (
-                            <button
-                              type="button"
-                              onClick={() => handleResolveReport(rep.id)}
-                              className="px-3 py-1 rounded-lg border border-[var(--color-border)] text-xs font-bold text-[var(--color-espresso)] hover:bg-[var(--color-surface-secondary)] transition-colors cursor-pointer"
-                            >
-                              Resolve
-                            </button>
-                          )}
+                    {loadingReports ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                          <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-[var(--color-brand-primary)]" />
+                          <span className="text-xs font-bold">Loading live moderation reports from database...</span>
                         </td>
                       </tr>
-                    ))}
+                    ) : filteredReports.length > 0 ? (
+                      filteredReports.map((rep) => {
+                        const listing = rep.targetListing;
+                        const listingTitle = listing?.title || "Listing Removed / Unavailable";
+                        const listingImg = listing?.images?.[0];
+                        const isListingActive = listing?.isActive !== false;
+                        const reporterName = rep.reporter?.name || "Anonymous Member";
+                        const reporterEmail = rep.reporter?.email || "";
+                        const categoryMeta = REPORT_CATEGORY_META[rep.category] || {
+                          label: rep.category || "General",
+                          badge: "bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20",
+                        };
+                        const dateStr = rep.createdAt ? new Date(rep.createdAt).toLocaleDateString() : "Recent";
+                        const isPendingOrInvestigating = rep.status === "pending" || rep.status === "investigating";
+
+                        return (
+                          <tr
+                            key={rep._id}
+                            className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-subtle)] transition-colors"
+                          >
+                            {/* Target Listing */}
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                {listingImg ? (
+                                  <img
+                                    src={listingImg}
+                                    alt={listingTitle}
+                                    className="w-12 h-12 rounded-xl object-cover shrink-0 border border-[var(--color-border-subtle)]"
+                                  />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-xl bg-[var(--color-surface-secondary)] border border-[var(--color-border)] flex items-center justify-center text-slate-400 shrink-0">
+                                    <Building2 size={20} />
+                                  </div>
+                                )}
+                                <div className="min-w-0 max-w-xs">
+                                  {listing?._id ? (
+                                    <Link
+                                      to={`/listings/${listing._id}`}
+                                      className="font-bold text-sm text-[var(--color-espresso)] hover:text-[var(--color-brand-primary)] hover:underline inline-flex items-center gap-1.5 truncate max-w-full"
+                                    >
+                                      <span className="truncate">{listingTitle}</span>
+                                      <ExternalLink size={12} className="shrink-0 opacity-60" />
+                                    </Link>
+                                  ) : (
+                                    <span className="font-bold text-sm text-slate-400 line-through">
+                                      {listingTitle}
+                                    </span>
+                                  )}
+                                  <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
+                                    {listing?.rentalPricePerDay && (
+                                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                        ₹{Number(listing.rentalPricePerDay).toLocaleString("en-IN")}/day
+                                      </span>
+                                    )}
+                                    <span
+                                      className={`px-1.5 py-0.2 rounded text-[10px] font-black uppercase tracking-wider ${
+                                        isListingActive
+                                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                          : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                                      }`}
+                                    >
+                                      {isListingActive ? "Active" : "Paused"}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Reported By */}
+                            <td className="px-6 py-4">
+                              <div className="font-bold text-[var(--color-espresso)] text-sm">{reporterName}</div>
+                              {reporterEmail && <div className="text-xs text-slate-400">{reporterEmail}</div>}
+                            </td>
+
+                            {/* Violation & Reason */}
+                            <td className="px-6 py-4 max-w-md">
+                              <span
+                                className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold border mb-1.5 ${categoryMeta.badge}`}
+                              >
+                                {categoryMeta.label}
+                              </span>
+                              <p className="text-xs text-[var(--color-espresso)] font-medium line-clamp-3">
+                                {rep.reason}
+                              </p>
+                              {rep.adminNotes && (
+                                <div className="mt-1.5 p-2 rounded-xl bg-[var(--color-surface-secondary)] border border-[var(--color-border-subtle)] text-[11px] text-slate-600 dark:text-slate-400">
+                                  <span className="font-bold text-slate-700 dark:text-slate-300">Admin Note: </span>
+                                  {rep.adminNotes}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Date */}
+                            <td className="px-6 py-4 text-xs text-slate-500 whitespace-nowrap">{dateStr}</td>
+
+                            {/* Status & Audit */}
+                            <td className="px-6 py-4">
+                              <span
+                                className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold capitalize ${
+                                  rep.status === "resolved"
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                    : rep.status === "investigating"
+                                    ? "bg-blue-500/10 text-blue-700 dark:text-blue-400"
+                                    : rep.status === "dismissed"
+                                    ? "bg-slate-500/10 text-slate-600 dark:text-slate-400"
+                                    : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                                }`}
+                              >
+                                {rep.status}
+                              </span>
+                              {rep.actionTaken && rep.actionTaken !== "none" && (
+                                <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">
+                                  {rep.actionTaken === "listing_paused"
+                                    ? "⏸️ Listing Paused"
+                                    : rep.actionTaken === "warning_sent"
+                                    ? "⚠️ Warned"
+                                    : rep.actionTaken}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Moderation Actions */}
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-2 flex-wrap">
+                                {isPendingOrInvestigating ? (
+                                  <>
+                                    {isListingActive && listing?._id && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleQuickPauseListing(rep)}
+                                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-400 hover:bg-rose-500/20 text-xs font-bold transition-all cursor-pointer shadow-xs"
+                                        title="Freeze listing immediately in database"
+                                      >
+                                        <Pause size={12} />
+                                        <span>Pause Item</span>
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenActionModal(rep, "resolved")}
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25 text-xs font-bold transition-all cursor-pointer shadow-xs"
+                                    >
+                                      <Check size={12} />
+                                      <span>Resolve</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleQuickDismissReport(rep)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-[var(--color-border)] text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-[var(--color-surface-secondary)] text-xs font-bold transition-all cursor-pointer"
+                                      title="Dismiss report without penalty"
+                                    >
+                                      <X size={12} />
+                                      <span>Dismiss</span>
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenActionModal(rep, rep.status)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--color-border)] text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
+                                  >
+                                    <FileText size={13} />
+                                    <span>Audit Details</span>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                          <ShieldCheck size={36} className="mx-auto mb-2 text-emerald-500 opacity-80" />
+                          <h4 className="font-bold text-sm text-[var(--color-espresso)] mb-1">
+                            {searchQuery ? "No reports match your search query." : "No moderation flags found."}
+                          </h4>
+                          <p className="text-xs text-slate-400">
+                            {searchQuery ? "Try clearing search filters." : "Your platform listings are operating smoothly without open flags."}
+                          </p>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1876,6 +2314,158 @@ export default function AdminDashboard() {
                       </>
                     ) : (
                       <span>{editingCategory ? "Update Category" : "Save Category"}</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* REPORT ACTION & AUDIT MODAL                              */}
+        {/* ======================================================== */}
+        {actionModal.open && actionModal.report && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !actionModal.submitting && setActionModal((prev) => ({ ...prev, open: false }))}
+              className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-lg bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] p-6 sm:p-7 shadow-2xl z-50 overflow-hidden max-h-[90vh] overflow-y-auto"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-[var(--color-border)] mb-5">
+                <div>
+                  <h3 className="text-lg font-black text-[var(--color-espresso)] tracking-tight">
+                    Review & Moderate Report
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Update report status, execute safety enforcement, and record audit notes in MongoDB.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActionModal((prev) => ({ ...prev, open: false }))}
+                  disabled={actionModal.submitting}
+                  className="p-1.5 rounded-full text-slate-400 hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Report Summary Card */}
+              <div className="p-4 rounded-2xl bg-[var(--color-surface-subtle)] border border-[var(--color-border-subtle)] space-y-2 mb-5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                    Target Listing
+                  </span>
+                  <span className="text-xs font-bold text-[var(--color-espresso)]">
+                    {actionModal.report.targetListing?.title || "Listing Removed"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Reported By:</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    {actionModal.report.reporter?.name || "Community Member"}
+                  </span>
+                </div>
+                <div className="text-xs bg-[var(--color-surface)] p-2.5 rounded-xl border border-[var(--color-border-subtle)] text-[var(--color-espresso)] font-medium">
+                  <span className="font-bold text-rose-600 block mb-0.5">Report Reason:</span>
+                  {actionModal.report.reason}
+                </div>
+              </div>
+
+              {/* Form Controls */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleReportAction(
+                    actionModal.report._id,
+                    actionModal.nextStatus,
+                    actionModal.actionTaken,
+                    actionModal.adminNotes
+                  );
+                }}
+                className="space-y-4"
+              >
+                {/* Status Selection */}
+                <div>
+                  <label className="block text-xs font-bold text-[var(--color-espresso)] mb-1.5">
+                    Report Status
+                  </label>
+                  <select
+                    value={actionModal.nextStatus}
+                    onChange={(e) => setActionModal((prev) => ({ ...prev, nextStatus: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 font-medium"
+                  >
+                    <option value="resolved">Resolved (Close Case)</option>
+                    <option value="investigating">Investigating (Keep Open)</option>
+                    <option value="dismissed">Dismissed (No Violation)</option>
+                    <option value="pending">Pending (Awaiting Action)</option>
+                  </select>
+                </div>
+
+                {/* Enforcement Action Selection */}
+                <div>
+                  <label className="block text-xs font-bold text-[var(--color-espresso)] mb-1.5">
+                    Enforcement Action
+                  </label>
+                  <select
+                    value={actionModal.actionTaken}
+                    onChange={(e) => setActionModal((prev) => ({ ...prev, actionTaken: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 font-medium"
+                  >
+                    <option value="none">None / Information Only</option>
+                    <option value="listing_paused">⏸️ Pause Listing (Immediately freeze in database)</option>
+                    <option value="warning_sent">⚠️ Warn Host (Safety notification dispatched)</option>
+                    <option value="dismissed">❌ Dismiss Report</option>
+                  </select>
+                </div>
+
+                {/* Admin Notes */}
+                <div>
+                  <label className="block text-xs font-bold text-[var(--color-espresso)] mb-1.5">
+                    Internal Admin Notes <span className="text-slate-400 font-normal">(Audit Trail)</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Enter details of review findings, communication with host, or justification..."
+                    value={actionModal.adminNotes}
+                    onChange={(e) => setActionModal((prev) => ({ ...prev, adminNotes: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 resize-none font-medium"
+                  />
+                </div>
+
+                {/* Form Buttons */}
+                <div className="pt-3 flex items-center justify-end gap-3 border-t border-[var(--color-border)]">
+                  <button
+                    type="button"
+                    onClick={() => setActionModal((prev) => ({ ...prev, open: false }))}
+                    disabled={actionModal.submitting}
+                    className="px-4 py-2.5 rounded-full border border-[var(--color-border)] text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionModal.submitting}
+                    className="px-6 py-2.5 rounded-full bg-[var(--color-brand-primary)] text-white text-xs font-bold shadow-md shadow-rose-500/25 hover:opacity-95 transition-opacity cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {actionModal.submitting ? (
+                      <>
+                        <RefreshCw size={14} className="animate-spin" />
+                        <span>Updating Database...</span>
+                      </>
+                    ) : (
+                      <span>Apply Moderation Action</span>
                     )}
                   </button>
                 </div>

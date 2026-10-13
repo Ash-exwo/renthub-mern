@@ -14,10 +14,12 @@ import {
   ExternalLink,
   Loader2,
   Info,
+  Flag,
 } from "lucide-react";
 import Container from "../../components/Container";
 import { Button, Badge } from "../../components/ui";
 import ChatSafetyModal from "../../components/ChatSafetyModal";
+import ReportListingModal from "../../components/ReportListingModal";
 import api from "../../utils/api";
 import { isLoggedIn, getUser } from "../../utils/auth";
 
@@ -53,6 +55,7 @@ export default function MessagesPage() {
 
   // State: Safety guidelines modal
   const [safetyModalOpen, setSafetyModalOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
   const isInitialMount = useRef(true);
@@ -565,13 +568,23 @@ export default function MessagesPage() {
                     </span>
                   )}
                   {activeConv.listing?._id && (
-                    <Link
-                      to={`/listings/${activeConv.listing._id}`}
-                      className="p-2 rounded-xl text-[var(--color-muted-grey)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-brand-primary)] transition-colors"
-                      title="View item details in this browser"
-                    >
-                      <ExternalLink size={16} />
-                    </Link>
+                    <>
+                      <Link
+                        to={`/listings/${activeConv.listing._id}`}
+                        className="p-2 rounded-xl text-[var(--color-muted-grey)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-brand-primary)] transition-colors"
+                        title="View item details in this browser"
+                      >
+                        <ExternalLink size={16} />
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => setReportModalOpen(true)}
+                        className="p-2 rounded-xl text-[var(--color-muted-grey)] hover:bg-rose-500/10 hover:text-rose-600 transition-colors cursor-pointer"
+                        title="Report this listing to Trust & Safety"
+                      >
+                        <Flag size={15} />
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -718,6 +731,16 @@ export default function MessagesPage() {
           onClose={() => setSafetyModalOpen(false)}
           onAccept={() => setSafetyModalOpen(false)}
         />
+
+        {/* Report Listing Modal */}
+        {activeConv?.listing && (
+          <ReportListingModal
+            isOpen={reportModalOpen}
+            onClose={() => setReportModalOpen(false)}
+            listingId={activeConv.listing._id || activeConv.listing.id || activeConv.listing}
+            listingTitle={activeConv.listing.title || "Item"}
+          />
+        )}
       </Container>
     </div>
   );
