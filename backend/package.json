@@ -10,7 +10,8 @@
     "test:notifications": "node test_notifications.js",
     "test:reviews": "node test_reviews.js",
     "test:messages": "node test_messages.js",
-    "test:reports": "node test_reports.js"
+    "test:reports": "node test_reports.js",
+    "test:roadmap": "node test_handover_dispute_pricing.js"
   },
   "keywords": [],
   "author": "",
