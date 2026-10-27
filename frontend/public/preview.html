@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RentHub Modern Redesign Preview - Light & Dark</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+    h1, h2, h3, h4, h5, .font-heading {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    /* 3D Perspective card container */
+    .perspective-container {
+      perspective: 1200px;
+    }
+    .tilt-card {
+      transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+      transform-style: preserve-3d;
+    }
+    /* Ambient Glow background */
+    .ambient-glow {
+      position: absolute;
+      width: 650px;
+      height: 650px;
+      border-radius: 50%;
+      filter: blur(140px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    /* Smooth custom scrollbar */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    /* Floating animations */
+    @keyframes float-slow {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-8px) rotate(1deg); }
+    }
+    @keyframes float-reverse {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(8px) rotate(-1deg); }
+    }
+    .animate-float-1 { animation: float-slow 5s ease-in-out infinite; }
+    .animate-float-2 { animation: float-reverse 6s ease-in-out infinite; }
+    .animate-pulse-glow {
+      animation: pulse-aura 3s ease-in-out infinite;
+    }
+    @keyframes pulse-aura {
+      0%, 100% { opacity: 0.5; transform: scale(1); }
+      50% { opacity: 0.9; transform: scale(1.1); }
+    }
+
+    /* THEME STYLES */
+    /* Light Theme (Default) */
+    html.light body {
+      background-color: #F8FAFC;
+      color: #0F172A;
+    }
+    html.light .theme-surface {
+      background-color: #FFFFFF;
+      border-color: #E2E8F0;
+      color: #0F172A;
+    }
+    html.light .theme-surface-subtle {
+      background-color: #F1F5F9;
+      border-color: #E2E8F0;
+    }
+    html.light .theme-text-muted {
+      color: #64748B;
+    }
+    html.light .theme-text-secondary {
+      color: #475569;
+    }
+    html.light .theme-border {
+      border-color: #E2E8F0;
+    }
+    html.light .theme-pill-bg {
+      background-color: #F1F5F9;
+      border-color: #E2E8F0;
+    }
+    html.light .theme-card-shadow {
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05), 0 20px 25px -5px rgba(0, 0, 0, 0.03);
+    }
+    html.light .theme-input {
+      background-color: #FFFFFF;
+      border-color: #CBD5E1;
+      color: #0F172A;
+    }
+    html.light .theme-glow-1 { background-color: rgba(255, 56, 92, 0.08); }
+    html.light .theme-glow-2 { background-color: rgba(79, 70, 229, 0.06); }
+    html.light .theme-glow-3 { background-color: rgba(245, 158, 11, 0.05); }
+
+    /* Dark Theme */
+    html.dark body {
+      background-color: #020617;
+      color: #F8FAFC;
+    }
+    html.dark .theme-surface {
+      background-color: rgba(15, 23, 42, 0.85);
+      border-color: rgba(255, 255, 255, 0.12);
+      color: #F8FAFC;
+    }
+    html.dark .theme-surface-subtle {
+      background-color: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+    html.dark .theme-text-muted {
+      color: #94A3B8;
+    }
+    html.dark .theme-text-secondary {
+      color: #CBD5E1;
+    }
+    html.dark .theme-border {
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+    html.dark .theme-pill-bg {
+      background-color: rgba(0, 0, 0, 0.5);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+    html.dark .theme-card-shadow {
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+    }
+    html.dark .theme-input {
+      background-color: rgba(0, 0, 0, 0.4);
+      border-color: rgba(255, 255, 255, 0.15);
+      color: #F8FAFC;
+    }
+    html.dark .theme-glow-1 { background-color: rgba(255, 56, 92, 0.15); }
+    html.dark .theme-glow-2 { background-color: rgba(79, 70, 229, 0.15); }
+    html.dark .theme-glow-3 { background-color: rgba(245, 158, 11, 0.08); }
+  </style>
+</head>
+<body class="min-h-screen p-4 sm:p-8 antialiased selection:bg-rose-500 selection:text-white relative overflow-x-hidden">
+
+  <!-- Ambient Light Fields -->
+  <div class="ambient-glow theme-glow-1 top-[-10%] left-[-5%] transition-colors duration-500"></div>
+  <div class="ambient-glow theme-glow-2 top-[20%] right-[-10%] transition-colors duration-500"></div>
+  <div class="ambient-glow theme-glow-3 bottom-[10%] left-[30%] transition-colors duration-500"></div>
+
+  <div class="max-w-6xl mx-auto relative z-10">
+
+    <!-- Top Navigation Preview Bar -->
+    <header class="flex flex-col md:flex-row items-center justify-between gap-4 py-4 px-6 rounded-3xl theme-surface border theme-card-shadow backdrop-blur-xl mb-8 transition-colors duration-300">
+      <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-500 via-rose-600 to-amber-400 text-white grid place-items-center font-black text-xl shadow-lg shadow-rose-500/25">
+            RH
+          </div>
+          <div>
+            <span class="font-heading font-extrabold text-xl tracking-tight">Rent<span class="text-rose-500">Hub</span></span>
+            <span class="ml-2.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+              Redesign Preview
+            </span>
+          </div>
+        </div>
+
+        <!-- Quick Theme Toggle for Mobile -->
+        <button onclick="toggleTheme()" class="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-xl border theme-border font-bold text-xs theme-surface hover:border-rose-500 transition-all cursor-pointer">
+          <span id="theme-icon-mob">☀️ Light</span>
+        </button>
+      </div>
+
+      <!-- Preview Mode Switcher Tabs -->
+      <div class="flex items-center theme-pill-bg p-1 rounded-2xl border text-xs font-bold overflow-x-auto no-scrollbar w-full md:w-auto">
+        <button onclick="switchTab('profile')" id="tab-btn-profile" class="flex-1 md:flex-none px-4 py-2 rounded-xl bg-rose-500 text-white shadow-md transition-all whitespace-nowrap cursor-pointer">
+          1. Profile Overview (Dribbble #26864716)
+        </button>
+        <button onclick="switchTab('home')" id="tab-btn-home" class="flex-1 md:flex-none px-4 py-2 rounded-xl theme-text-muted hover:text-rose-500 transition-all whitespace-nowrap cursor-pointer">
+          2. Superconscious Home & Scroll
+        </button>
+        <button onclick="switchTab('listing')" id="tab-btn-listing" class="flex-1 md:flex-none px-4 py-2 rounded-xl theme-text-muted hover:text-rose-500 transition-all whitespace-nowrap cursor-pointer">
+          3. Detail & Escrow Widget
+        </button>
+      </div>
+
+      <!-- Desktop Theme Switcher Pill -->
+      <div class="hidden md:flex items-center gap-2">
+        <button onclick="toggleTheme()" class="flex items-center gap-2 px-3.5 py-2 rounded-xl border theme-border font-bold text-xs theme-surface hover:border-rose-500 hover:shadow-sm transition-all cursor-pointer">
+          <span id="theme-icon">☀️</span>
+          <span id="theme-label">Light Mode</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 1: PROFILE OVERVIEW (Inspired by Dribbble #26864716) -->
+    <!-- ======================================================== -->
+    <section id="view-profile" class="block transition-all duration-300">
+      
+      <!-- Section Banner -->
+      <div class="flex items-center justify-between mb-6 flex-wrap gap-4">
+        <div>
+          <div class="text-xs font-black uppercase tracking-widest text-rose-500 mb-1 flex items-center gap-1.5">
+            <span>✨</span> Reference 1 • Profile Overview Animation
+          </div>
+          <h2 class="font-heading text-3xl font-black tracking-tight">
+            Tactile 3D Identity Dashboard
+          </h2>
+          <p class="theme-text-muted text-sm mt-1">
+            Move your mouse over the identity card to experience the interactive 3D perspective tilt in light mode.
+          </p>
+        </div>
+        <div class="flex items-center gap-2 text-xs font-bold px-3.5 py-1.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+          Live Escrow Trust Score: 99.8%
+        </div>
+      </div>
+
+      <!-- Main Profile 2-Column Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        
+        <!-- Left: Interactive 3D Perspective Card (5 Cols) -->
+        <div class="lg:col-span-5 perspective-container">
+          <div id="tiltCard" class="tilt-card theme-surface border rounded-3xl p-7 theme-card-shadow backdrop-blur-2xl relative overflow-hidden group">
+            
+            <!-- Card Ambient Shine -->
+            <div class="absolute -top-24 -right-24 w-48 h-48 bg-rose-500/10 rounded-full blur-3xl pointer-events-none group-hover:bg-rose-500/20 transition-all duration-500"></div>
+
+            <!-- Profile Avatar with Animated Glow Ring -->
+            <div class="flex flex-col items-center text-center relative z-10">
+              <div class="relative mb-4">
+                <div class="absolute -inset-1 rounded-full bg-gradient-to-tr from-rose-500 to-amber-400 opacity-60 blur-md animate-pulse-glow"></div>
+                <div class="w-24 h-24 rounded-full bg-gradient-to-tr from-rose-500 via-rose-600 to-amber-400 text-white font-black text-3xl grid place-items-center shadow-xl relative z-10 border-4 border-white dark:border-slate-800">
+                  A
+                </div>
+                <div class="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-emerald-500 text-white grid place-items-center text-xs font-black shadow-md border-2 border-white dark:border-slate-900 z-20" title="Verified Member">
+                  ✓
+                </div>
+              </div>
+
+              <h3 class="font-heading text-2xl font-black tracking-tight">
+                Aswathy G. R.
+              </h3>
+              <p class="text-xs theme-text-muted mt-0.5">aswathygr61@renthub.app</p>
+              
+              <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full theme-surface-subtle text-xs font-bold mt-3 border theme-border">
+                <span class="text-amber-500">★</span> Superhost & Verified Renter
+              </div>
+
+              <!-- Quick Verification Checklist -->
+              <div class="w-full h-px theme-border my-6"></div>
+              
+              <div class="w-full grid grid-cols-3 gap-2.5 text-center text-xs mb-6">
+                <div class="p-3 rounded-2xl theme-surface-subtle border theme-border">
+                  <div class="font-heading font-black text-lg">12</div>
+                  <div class="text-[11px] theme-text-muted mt-0.5 font-medium">Rentals</div>
+                </div>
+                <div class="p-3 rounded-2xl theme-surface-subtle border theme-border">
+                  <div class="font-heading font-black text-lg text-rose-500">4.96</div>
+                  <div class="text-[11px] theme-text-muted mt-0.5 font-medium">Rating</div>
+                </div>
+                <div class="p-3 rounded-2xl theme-surface-subtle border theme-border">
+                  <div class="font-heading font-black text-lg text-emerald-500">100%</div>
+                  <div class="text-[11px] theme-text-muted mt-0.5 font-medium">Return Rate</div>
+                </div>
+              </div>
+
+              <div class="w-full space-y-2.5 text-left text-xs font-medium">
+                <div class="flex items-center justify-between p-2.5 rounded-xl theme-surface-subtle border theme-border">
+                  <span class="flex items-center gap-2 theme-text-secondary">
+                    <span class="text-emerald-500">🛡️</span> Government ID
+                  </span>
+                  <span class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md">Verified</span>
+                </div>
+                <div class="flex items-center justify-between p-2.5 rounded-xl theme-surface-subtle border theme-border">
+                  <span class="flex items-center gap-2 theme-text-secondary">
+                    <span class="text-emerald-500">📱</span> Phone OTP (India)
+                  </span>
+                  <span class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md">+91 98460...</span>
+                </div>
+                <div class="flex items-center justify-between p-2.5 rounded-xl theme-surface-subtle border theme-border">
+                  <span class="flex items-center gap-2 theme-text-secondary">
+                    <span class="text-indigo-500">📍</span> Operating Base
+                  </span>
+                  <span class="text-[11px] font-bold">Kochi, Kerala</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Animated Tabbed Settings & Details Panel (7 Cols) -->
+        <div class="lg:col-span-7 theme-surface border rounded-3xl p-6 sm:p-8 backdrop-blur-2xl theme-card-shadow transition-colors duration-300">
+          
+          <!-- Tab Switcher with Sliding Active Pill -->
+          <div class="flex p-1.5 rounded-2xl theme-pill-bg border mb-8 overflow-x-auto no-scrollbar gap-1">
+            <button onclick="setProfileSubTab('personal')" id="subtab-btn-personal" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-500 shadow-md transition-all whitespace-nowrap cursor-pointer">
+              👤 Personal Details
+            </button>
+            <button onclick="setProfileSubTab('security')" id="subtab-btn-security" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold theme-text-muted hover:text-rose-500 transition-all whitespace-nowrap cursor-pointer">
+              🔒 Security & 2FA
+            </button>
+            <button onclick="setProfileSubTab('notifications')" id="subtab-btn-notifications" class="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold theme-text-muted hover:text-rose-500 transition-all whitespace-nowrap cursor-pointer">
+              🔔 Notifications
+            </button>
+          </div>
+
+          <!-- Subtab 1: Personal Details Form -->
+          <div id="subtab-personal" class="space-y-5">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider theme-text-muted mb-2">Full Legal Name</label>
+                <input type="text" value="Aswathy G. R." class="w-full theme-input border focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 rounded-xl px-4 py-3 text-sm font-semibold focus:outline-none transition-all">
+              </div>
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider theme-text-muted mb-2">Email (Primary Auth)</label>
+                <input type="email" value="aswathygr61@renthub.app" disabled class="w-full theme-surface-subtle border theme-border rounded-xl px-4 py-3 text-sm font-semibold theme-text-muted cursor-not-allowed">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider theme-text-muted mb-2">Phone Number</label>
+                <input type="text" value="9846012345" class="w-full theme-input border focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 rounded-xl px-4 py-3 text-sm font-semibold focus:outline-none transition-all">
+              </div>
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider theme-text-muted mb-2">Current Location</label>
+                <input type="text" value="Kochi, Ernakulam" class="w-full theme-input border focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 rounded-xl px-4 py-3 text-sm font-semibold focus:outline-none transition-all">
+              </div>
+            </div>
+
+            <div class="pt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-t theme-border">
+              <span class="text-xs theme-text-muted">All profile changes synchronized directly with MongoDB Atlas.</span>
+              <button class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white font-bold text-xs shadow-lg shadow-rose-500/25 transition-all active:scale-95 cursor-pointer">
+                Save Changes
+              </button>
+            </div>
+          </div>
+
+          <!-- Subtab 2: Security & Password -->
+          <div id="subtab-security" class="hidden space-y-5">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider theme-text-muted mb-2">Current Password</label>
+              <input type="password" value="••••••••••••" class="w-full theme-input border rounded-xl px-4 py-3 text-sm focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider theme-text-muted mb-2">New Secure Password</label>
+              <input type="password" placeholder="At least 8 characters" class="w-full theme-input border rounded-xl px-4 py-3 text-sm focus:outline-none">
+            </div>
+            <div class="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-700 dark:text-indigo-300 flex items-center gap-3">
+              <span class="text-xl">🛡️</span>
+              <div>
+                <span class="font-bold block">Escrow Fraud Shield Active</span>
+                Password changes require email confirmation before active payouts can be modified.
+              </div>
+            </div>
+          </div>
+
+          <!-- Subtab 3: Notifications -->
+          <div id="subtab-notifications" class="hidden space-y-4">
+            <div class="flex items-center justify-between p-4 rounded-2xl theme-surface-subtle border theme-border">
+              <div>
+                <div class="text-sm font-bold">Booking Approval & Status Alerts</div>
+                <div class="text-xs theme-text-muted mt-0.5">Instant notification when a host approves your rental request.</div>
+              </div>
+              <input type="checkbox" checked class="w-5 h-5 accent-rose-500 rounded cursor-pointer">
+            </div>
+            <div class="flex items-center justify-between p-4 rounded-2xl theme-surface-subtle border theme-border">
+              <div>
+                <div class="text-sm font-bold">Escrow Payment & Deposit Release</div>
+                <div class="text-xs theme-text-muted mt-0.5">Updates on held security deposits and automated returns.</div>
+              </div>
+              <input type="checkbox" checked class="w-5 h-5 accent-rose-500 rounded cursor-pointer">
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 2: SUPERCONSCIOUS HOME & SCROLL STORYTELLING        -->
+    <!-- ======================================================== -->
+    <section id="view-home" class="hidden transition-all duration-300">
+      
+      <!-- Section Header -->
+      <div class="text-center max-w-3xl mx-auto mb-10">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-black uppercase tracking-wider mb-4">
+          <span>✨</span> Reference 2 • Outcrowd Superconscious Motion
+        </div>
+        <h2 class="font-heading text-4xl sm:text-5xl font-black leading-tight">
+          Spatial Depth & Kinetic Storytelling
+        </h2>
+        <p class="theme-text-muted text-base mt-3">
+          Layered cards, floating equipment badges, single-line horizontal category scroll, and modular Bento-grid architecture.
+        </p>
+      </div>
+
+      <!-- Hero Visual Canvas with Floating Badges -->
+      <div class="relative theme-surface border rounded-3xl p-8 sm:p-14 mb-10 overflow-hidden theme-card-shadow transition-colors duration-300">
+        
+        <!-- Floating Kinetic Pill Badges (Superconscious Inspiration) -->
+        <div class="absolute top-8 left-8 animate-float-1 px-4 py-2.5 rounded-full theme-surface border theme-card-shadow text-xs font-bold flex items-center gap-2.5 hidden sm:flex">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+          <span>Sony FX3 Cinema Kit • Available Now</span>
+        </div>
+        
+        <div class="absolute top-12 right-10 animate-float-2 px-4 py-2.5 rounded-full theme-surface border theme-card-shadow text-xs font-bold flex items-center gap-2.5 hidden sm:flex">
+          <span class="text-amber-500">★ 4.98</span>
+          <span>Top Host in Kochi</span>
+        </div>
+
+        <div class="absolute bottom-8 right-12 animate-float-1 px-4 py-2.5 rounded-full theme-surface border theme-card-shadow text-xs font-bold flex items-center gap-2.5 hidden sm:flex">
+          <span class="text-rose-500">🔒</span>
+          <span>100% Escrow Security</span>
+        </div>
+
+        <!-- Center Hero Typography -->
+        <div class="text-center max-w-2xl mx-auto py-8 relative z-10">
+          <h1 class="font-heading text-3xl sm:text-5xl font-extrabold leading-tight">
+            Rent high-value gear with <span class="bg-gradient-to-r from-rose-500 via-rose-600 to-amber-500 bg-clip-text text-transparent">zero friction</span>
+          </h1>
+          <p class="theme-text-secondary text-sm sm:text-base mt-4 leading-relaxed">
+            Discover precision cameras, audio gear, vehicles, and studio spaces protected by digital escrow and ₹1,00,000 damage coverage.
+          </p>
+
+          <!-- Docked Glass Search Bar -->
+          <div class="mt-8 p-2 rounded-2xl theme-surface-subtle border theme-border theme-card-shadow flex flex-col sm:flex-row items-center gap-2 max-w-xl mx-auto">
+            <input type="text" placeholder="Search cameras, vehicles, spaces..." class="w-full bg-transparent px-4 py-2.5 text-xs placeholder-slate-400 focus:outline-none font-semibold">
+            <button class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs shadow-lg shadow-rose-500/25 whitespace-nowrap transition-all cursor-pointer">
+              Explore Rentals
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Single-Line Category Scroll Row (User Request) -->
+      <div class="mb-12">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-heading font-extrabold text-xl">Browse by Category</h3>
+          <span class="text-xs font-bold text-rose-500">Single Line • Horizontally Scrollable &rarr;</span>
+        </div>
+
+        <div class="flex items-center gap-3 overflow-x-auto no-scrollbar pb-3">
+          <div class="w-36 shrink-0 p-4 rounded-2xl theme-surface border theme-border text-center hover:border-rose-500 hover:shadow-md transition-all cursor-pointer">
+            <div class="text-3xl mb-1.5">📷</div>
+            <div class="font-bold text-xs">Cameras</div>
+            <div class="text-[10px] theme-text-muted mt-0.5">38 items</div>
+          </div>
+          <div class="w-36 shrink-0 p-4 rounded-2xl theme-surface border theme-border text-center hover:border-rose-500 hover:shadow-md transition-all cursor-pointer">
+            <div class="text-3xl mb-1.5">🚗</div>
+            <div class="font-bold text-xs">Vehicles</div>
+            <div class="text-[10px] theme-text-muted mt-0.5">24 items</div>
+          </div>
+          <div class="w-36 shrink-0 p-4 rounded-2xl theme-surface border theme-border text-center hover:border-rose-500 hover:shadow-md transition-all cursor-pointer">
+            <div class="text-3xl mb-1.5">🏠</div>
+            <div class="font-bold text-xs">Apartments</div>
+            <div class="text-[10px] theme-text-muted mt-0.5">19 items</div>
+          </div>
+          <div class="w-36 shrink-0 p-4 rounded-2xl theme-surface border theme-border text-center hover:border-rose-500 hover:shadow-md transition-all cursor-pointer">
+            <div class="text-3xl mb-1.5">🎙️</div>
+            <div class="font-bold text-xs">Audio & Mics</div>
+            <div class="text-[10px] theme-text-muted mt-0.5">15 items</div>
+          </div>
+          <div class="w-36 shrink-0 p-4 rounded-2xl theme-surface border theme-border text-center hover:border-rose-500 hover:shadow-md transition-all cursor-pointer">
+            <div class="text-3xl mb-1.5">🚁</div>
+            <div class="font-bold text-xs">Drones</div>
+            <div class="text-[10px] theme-text-muted mt-0.5">11 items</div>
+          </div>
+          <div class="w-36 shrink-0 p-4 rounded-2xl bg-rose-500/10 border border-dashed border-rose-500/30 text-center hover:bg-rose-500/20 transition-all cursor-pointer">
+            <div class="text-3xl mb-1.5 text-rose-500">➔</div>
+            <div class="font-bold text-xs text-rose-600 dark:text-rose-400">View All</div>
+            <div class="text-[10px] theme-text-muted mt-0.5">All Categories</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bento Grid Guarantees Strip -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="p-6 rounded-3xl theme-surface border theme-border theme-card-shadow hover:border-rose-500/40 transition-all">
+          <div class="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-500 grid place-items-center text-xl mb-4">🛡️</div>
+          <h4 class="font-heading font-black text-lg mb-1">₹1,00,000 Coverage</h4>
+          <p class="text-xs theme-text-muted leading-relaxed">Built-in damage protection automatically attached to every rental transaction.</p>
+        </div>
+        <div class="p-6 rounded-3xl theme-surface border theme-border theme-card-shadow hover:border-indigo-500/40 transition-all">
+          <div class="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-500 grid place-items-center text-xl mb-4">⚡</div>
+          <h4 class="font-heading font-black text-lg mb-1">Instant Digital Escrow</h4>
+          <p class="text-xs theme-text-muted leading-relaxed">Payments are held in vault custody and only released when the item is inspected.</p>
+        </div>
+        <div class="p-6 rounded-3xl theme-surface border theme-border theme-card-shadow hover:border-emerald-500/40 transition-all">
+          <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 grid place-items-center text-xl mb-4">✅</div>
+          <h4 class="font-heading font-black text-lg mb-1">100% Verified Community</h4>
+          <p class="text-xs theme-text-muted leading-relaxed">Government ID verification and two-way peer ratings keep the ecosystem fraud-free.</p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 3: LISTING DETAIL & ESCROW WIDGET                   -->
+    <!-- ======================================================== -->
+    <section id="view-listing" class="hidden transition-all duration-300">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        
+        <!-- Media & Details (7 cols) -->
+        <div class="lg:col-span-7 space-y-6">
+          <div class="h-80 rounded-3xl overflow-hidden theme-surface border relative group theme-card-shadow">
+            <img src="https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=1000&q=80" alt="Cinema Camera" class="w-full h-full object-cover group-hover:scale-105 transition-all duration-500">
+            <div class="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/80 dark:bg-black/70 backdrop-blur-md border theme-border text-xs font-bold">
+              Verified Cinema Rig
+            </div>
+            <div class="absolute bottom-4 right-4 px-3 py-1.5 rounded-xl bg-white/90 dark:bg-black/80 backdrop-blur-md text-xs font-bold">
+              View all 6 photos
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center gap-2 text-xs font-bold text-rose-500 mb-1">
+              <span>Cameras & Lenses</span> • <span>Kochi, Kerala</span>
+            </div>
+            <h2 class="font-heading text-2xl sm:text-3xl font-black">
+              Sony FX3 Full-Frame Cinema Line Camera (Cage + 24-70mm GM II)
+            </h2>
+          </div>
+        </div>
+
+        <!-- Sticky Escrow Booking Box (5 cols) -->
+        <div class="lg:col-span-5 theme-surface border rounded-3xl p-6 backdrop-blur-2xl theme-card-shadow">
+          <div class="flex items-baseline justify-between mb-4 pb-4 border-b theme-border">
+            <div>
+              <span class="font-heading text-3xl font-black">₹2,800</span>
+              <span class="text-xs theme-text-muted font-medium"> / day</span>
+            </div>
+            <div class="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg">
+              ★ 4.96 (18 reviews)
+            </div>
+          </div>
+
+          <div class="space-y-3 mb-6">
+            <div class="p-3 rounded-2xl theme-surface-subtle border theme-border grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span class="theme-text-muted text-[10px] uppercase font-bold block">Start Date</span>
+                <span class="font-bold">Oct 20, 2026</span>
+              </div>
+              <div>
+                <span class="theme-text-muted text-[10px] uppercase font-bold block">End Date</span>
+                <span class="font-bold">Oct 23, 2026 (3 days)</span>
+              </div>
+            </div>
+
+            <!-- Price Breakdown with Escrow Status -->
+            <div class="p-4 rounded-2xl theme-surface-subtle border theme-border space-y-2 text-xs font-medium">
+              <div class="flex justify-between theme-text-secondary">
+                <span>Base Rental (₹2,800 × 3 days)</span>
+                <span class="font-bold">₹8,400</span>
+              </div>
+              <div class="flex justify-between theme-text-secondary">
+                <span>Security Deposit (Refundable)</span>
+                <span class="font-bold text-emerald-600 dark:text-emerald-400">₹3,000</span>
+              </div>
+              <div class="flex justify-between theme-text-secondary">
+                <span>Service Fee (5%)</span>
+                <span class="font-bold">₹420</span>
+              </div>
+              <div class="h-px theme-border my-1"></div>
+              <div class="flex justify-between text-sm font-black">
+                <span>Total Escrow Authorization</span>
+                <span class="text-rose-500">₹11,820</span>
+              </div>
+            </div>
+          </div>
+
+          <button class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white font-black text-sm shadow-xl shadow-rose-500/25 transition-all active:scale-98 cursor-pointer">
+            Request to Book Now
+          </button>
+          
+          <div class="text-center text-[11px] theme-text-muted mt-3 flex items-center justify-center gap-1.5">
+            <span>🔒</span> You won't be charged until host confirms availability.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Interactive JavaScript for Tab Switching, 3D Tilt, and Theme Toggle -->
+  <script>
+    // Theme Toggle Functionality
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isLight = html.classList.contains('light');
+      
+      if (isLight) {
+        html.classList.remove('light');
+        html.classList.add('dark');
+        document.getElementById('theme-icon').textContent = '🌙';
+        document.getElementById('theme-label').textContent = 'Dark Mode';
+        document.getElementById('theme-icon-mob').textContent = '🌙 Dark';
+      } else {
+        html.classList.remove('dark');
+        html.classList.add('light');
+        document.getElementById('theme-icon').textContent = '☀️';
+        document.getElementById('theme-label').textContent = 'Light Mode';
+        document.getElementById('theme-icon-mob').textContent = '☀️ Light';
+      }
+    }
+
+    // Tab Switcher
+    function switchTab(tab) {
+      document.getElementById('view-profile').classList.add('hidden');
+      document.getElementById('view-home').classList.add('hidden');
+      document.getElementById('view-listing').classList.add('hidden');
+
+      ['profile', 'home', 'listing'].forEach(t => {
+        document.getElementById('tab-btn-' + t).className = "flex-1 md:flex-none px-4 py-2 rounded-xl theme-text-muted hover:text-rose-500 transition-all whitespace-nowrap cursor-pointer";
+      });
+
+      if (tab === 'profile') {
+        document.getElementById('view-profile').classList.remove('hidden');
+        document.getElementById('tab-btn-profile').className = "flex-1 md:flex-none px-4 py-2 rounded-xl bg-rose-500 text-white shadow-md transition-all whitespace-nowrap cursor-pointer";
+      } else if (tab === 'home') {
+        document.getElementById('view-home').classList.remove('hidden');
+        document.getElementById('tab-btn-home').className = "flex-1 md:flex-none px-4 py-2 rounded-xl bg-rose-500 text-white shadow-md transition-all whitespace-nowrap cursor-pointer";
+      } else if (tab === 'listing') {
+        document.getElementById('view-listing').classList.remove('hidden');
+        document.getElementById('tab-btn-listing').className = "flex-1 md:flex-none px-4 py-2 rounded-xl bg-rose-500 text-white shadow-md transition-all whitespace-nowrap cursor-pointer";
+      }
+    }
+
+    // Profile Subtabs
+    function setProfileSubTab(sub) {
+      ['personal', 'security', 'notifications'].forEach(s => {
+        document.getElementById('subtab-' + s).classList.add('hidden');
+        document.getElementById('subtab-btn-' + s).className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold theme-text-muted hover:text-rose-500 transition-all whitespace-nowrap cursor-pointer";
+      });
+      document.getElementById('subtab-' + sub).classList.remove('hidden');
+      document.getElementById('subtab-btn-' + sub).className = "flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-500 shadow-md transition-all whitespace-nowrap cursor-pointer";
+    }
+
+    // 3D Perspective Tilt on Mouse Movement
+    const card = document.getElementById('tiltCard');
+    if (card) {
+      card.addEventListener('mousemove', (e) => {
+        const rect = card.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const rotateX = ((y - centerY) / centerY) * -7;
+        const rotateY = ((x - centerX) / centerX) * 7;
+        card.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.02)`;
+        card.style.boxShadow = `0 20px 40px -10px rgba(255, 56, 92, 0.2)`;
+      });
+
+      card.addEventListener('mouseleave', () => {
+        card.style.transform = 'rotateX(0deg) rotateY(0deg) scale(1)';
+        card.style.boxShadow = '';
+      });
+    }
+  </script>
+</body>
+</html>
