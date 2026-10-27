@@ -32,6 +32,8 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
+  Scale,
+  DollarSign,
 } from "lucide-react";
 import api from "../../utils/api";
 import { getAdminToken, getAdminUser, adminLogout } from "../../utils/auth";
@@ -84,6 +86,36 @@ const REVENUE_DATA = {
     { label: "Apr", revenue: 482500, bookings: 388, x: 380, y: 20 },
   ],
 };
+
+// Helper to generate a smooth Catmull-Rom cubic Bezier SVG spline path
+function generateSplinePath(points, yKey = "y") {
+  if (!points || points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x},${points[0][yKey]}`;
+
+  let d = `M ${points[0].x},${points[0][yKey]}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = i > 0 ? points[i - 1] : points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = i < points.length - 2 ? points[i + 2] : p2;
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1[yKey] + (p2[yKey] - p0[yKey]) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2[yKey] - (p3[yKey] - p1[yKey]) / 6;
+
+    d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2[yKey].toFixed(1)}`;
+  }
+  return d;
+}
+
+function generateAreaPath(points) {
+  if (!points || points.length === 0) return "";
+  const spline = generateSplinePath(points, "y");
+  const first = points[0];
+  const last = points[points.length - 1];
+  return `M ${first.x},180 L ${spline.slice(2)} L ${last.x},180 Z`;
+}
 
 const INITIAL_NOTIFICATIONS = [
   {
@@ -196,6 +228,8 @@ export default function AdminDashboard() {
   // Analytics Chart State
   const [chartTimeframe, setChartTimeframe] = useState("7D");
   const [hoveredPoint, setHoveredPoint] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
   // Live Database Category State
   const [categories, setCategories] = useState([]);
@@ -236,6 +270,20 @@ export default function AdminDashboard() {
     actionTaken: "none",
     adminNotes: "",
     submitting: false,
+  });
+
+  // Escrow Dispute Tribunal State (Feature 2)
+  const [disputes, setDisputes] = useState([]);
+  const [loadingDisputes, setLoadingDisputes] = useState(false);
+  const [disputeFilter, setDisputeFilter] = useState("all");
+  const [arbitrationModal, setArbitrationModal] = useState({
+    open: false,
+    dispute: null,
+    ruling: "award_host_full",
+    awardedToHost: "",
+    adminNotes: "",
+    submitting: false,
+    error: "",
   });
 
   // User Management Dedicated Search, Role Filter, and Pagination
@@ -364,20 +412,152 @@ export default function AdminDashboard() {
     }
   }, [reportFilter, handleLogout]);
 
+  // Fetch Disputes from Backend API (Live MongoDB)
+  const fetchAdminDisputes = useCallback(async (filterParam) => {
+    const token = getAdminToken();
+    if (!token) return;
+
+    setLoadingDisputes(true);
+    try {
+      const activeFilt = filterParam !== undefined ? filterParam : disputeFilter;
+      const statusQuery = activeFilt && activeFilt !== "all" ? `?status=${activeFilt}` : "";
+      const response = await api.get(`/disputes/admin${statusQuery}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDisputes(response.data?.disputes || []);
+    } catch (err) {
+      console.error("Failed to load admin disputes:", err);
+      if (err.response?.status === 401) {
+        handleLogout();
+      }
+    } finally {
+      setLoadingDisputes(false);
+    }
+  }, [disputeFilter, handleLogout]);
+
+  // Fetch Dynamic Admin Analytics from Backend API (Live MongoDB)
+  const fetchAdminAnalytics = useCallback(async () => {
+    const token = getAdminToken();
+    if (!token) return;
+
+    setLoadingAnalytics(true);
+    try {
+      const response = await api.get("/admin/analytics", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setAnalytics(response.data);
+    } catch (err) {
+      console.error("Failed to load admin analytics:", err);
+      if (err.response?.status === 401) {
+        handleLogout();
+      }
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  }, [handleLogout]);
+
+  const disputeCounts = useMemo(() => {
+    return {
+      total: disputes.length,
+      escalated: disputes.filter((d) => d.status === "escalated_to_admin").length,
+      pending: disputes.filter((d) => d.status === "pending_renter" || d.status === "pending_renter_response").length,
+      resolved: disputes.filter((d) => d.status === "resolved").length,
+    };
+  }, [disputes]);
+
   // Load all live database entities on mount
   useEffect(() => {
     fetchAdminCategories();
     fetchAdminListings();
     fetchAdminUsers();
     fetchAdminReports();
-  }, [fetchAdminCategories, fetchAdminListings, fetchAdminUsers, fetchAdminReports]);
+    fetchAdminDisputes();
+    fetchAdminAnalytics();
+  }, [fetchAdminCategories, fetchAdminListings, fetchAdminUsers, fetchAdminReports, fetchAdminDisputes, fetchAdminAnalytics]);
 
-  // Re-fetch reports when filter changes
+  // Re-fetch reports or disputes when filter changes
   useEffect(() => {
     if (activeTab === "reports") {
       fetchAdminReports(reportFilter);
+    } else if (activeTab === "disputes") {
+      fetchAdminDisputes(disputeFilter);
     }
-  }, [reportFilter, activeTab, fetchAdminReports]);
+  }, [reportFilter, disputeFilter, activeTab, fetchAdminReports, fetchAdminDisputes]);
+
+  const handleOpenArbitration = (dispute) => {
+    setArbitrationModal({
+      open: true,
+      dispute,
+      ruling: "award_host_full",
+      awardedToHost: dispute.claimAmount ? String(dispute.claimAmount) : "",
+      adminNotes: "Evidence reviewed. Pre-rental vs return conditions cross-referenced.",
+      submitting: false,
+      error: "",
+    });
+  };
+
+  const handleExecuteArbitration = async () => {
+    const { dispute, ruling, awardedToHost, adminNotes } = arbitrationModal;
+    if (!dispute) return;
+
+    const token = getAdminToken();
+    if (!token) {
+      handleLogout();
+      return;
+    }
+
+    let numericAward = undefined;
+    if (ruling === "award_host_partial") {
+      numericAward = Number(awardedToHost);
+      if (isNaN(numericAward) || numericAward < 0) {
+        setArbitrationModal((prev) => ({ ...prev, error: "Please enter a valid partial award amount." }));
+        return;
+      }
+      const maxDeposit = dispute.booking?.deposit || dispute.claimAmount;
+      if (numericAward > maxDeposit) {
+        setArbitrationModal((prev) => ({ ...prev, error: `Award cannot exceed security deposit of ₹${maxDeposit}.` }));
+        return;
+      }
+    }
+
+    setArbitrationModal((prev) => ({ ...prev, submitting: true, error: "" }));
+
+    try {
+      const response = await api.post(
+        `/disputes/${dispute._id}/admin-resolve`,
+        {
+          ruling,
+          awardedToHost: numericAward,
+          adminNotes: adminNotes.trim(),
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setCategoryFeedback({
+        type: "success",
+        message: response.data?.message || "Arbitration ruling executed and escrow settled.",
+      });
+
+      setArbitrationModal({
+        open: false,
+        dispute: null,
+        ruling: "award_host_full",
+        awardedToHost: "",
+        adminNotes: "",
+        submitting: false,
+        error: "",
+      });
+
+      fetchAdminDisputes();
+      fetchAdminAnalytics();
+    } catch (err) {
+      setArbitrationModal((prev) => ({
+        ...prev,
+        submitting: false,
+        error: err.response?.data?.message || "Failed to execute arbitration ruling.",
+      }));
+    }
+  };
 
   // Open Add Category Modal
   const openAddModal = () => {
@@ -461,6 +641,7 @@ export default function AdminDashboard() {
       }
 
       setIsModalOpen(false);
+      fetchAdminAnalytics();
     } catch (err) {
       console.error("Error saving category:", err);
       setModalError(
@@ -497,6 +678,7 @@ export default function AdminDashboard() {
         type: "success",
         message: res.data.message || `Category ${nextStatus ? "activated" : "deactivated"}.`,
       });
+      fetchAdminAnalytics();
     } catch (err) {
       console.error("Failed to update status:", err);
       // Revert optimistic update
@@ -658,16 +840,16 @@ export default function AdminDashboard() {
     {
       id: "stat-revenue",
       label: "Platform Revenue",
-      value: "₹4,82,500",
-      change: "+18%",
+      value: `₹${Number(analytics?.totalRevenue || 0).toLocaleString("en-IN")}`,
+      change: analytics?.monthlyGrowth || "+0.0%",
       trendLabel: "vs last month",
       icon: TrendingUp,
       color: "text-[var(--color-brand-primary)] bg-[var(--color-brand-primary-subtle)] border-rose-500/20",
     },
     {
       id: "stat-categories",
-      label: "Catalog Categories",
-      value: categories.length.toString(),
+      label: "Categories",
+      value: (analytics?.categoryDemand?.totalCategories || categories.length).toString(),
       change: `${activeCount} Active`,
       trendLabel: "in DB",
       icon: FolderTree,
@@ -675,8 +857,17 @@ export default function AdminDashboard() {
     },
   ];
 
-  // Active chart series
-  const activeSeries = REVENUE_DATA[chartTimeframe] || REVENUE_DATA["7D"];
+  // Active chart series dynamically resolved from analytics or fallback
+  const activeSeries = useMemo(() => {
+    if (analytics?.chartData && analytics.chartData[chartTimeframe]) {
+      return analytics.chartData[chartTimeframe];
+    }
+    return REVENUE_DATA[chartTimeframe] || REVENUE_DATA["7D"];
+  }, [analytics, chartTimeframe]);
+
+  const splinePath = useMemo(() => generateSplinePath(activeSeries, "y"), [activeSeries]);
+  const areaPath = useMemo(() => generateAreaPath(activeSeries), [activeSeries]);
+  const cmpPath = useMemo(() => generateSplinePath(activeSeries, "cmpY"), [activeSeries]);
 
   // Users tab actions
   const handleDeleteUser = async (id) => {
@@ -715,6 +906,7 @@ export default function AdminDashboard() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       fetchAdminListings();
+      fetchAdminAnalytics();
       setCategoryFeedback({
         type: "success",
         message: `Listing status updated to ${newStatus}.`,
@@ -737,6 +929,7 @@ export default function AdminDashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setListings((prev) => prev.filter((l) => (l._id || l.id) !== id));
+      fetchAdminAnalytics();
       setCategoryFeedback({
         type: "success",
         message: "Listing permanently deleted from database.",
@@ -772,9 +965,10 @@ export default function AdminDashboard() {
         message: response.data?.message || "Report updated successfully.",
       });
 
-      // Refresh both reports & listings (in case listing was paused)
+      // Refresh reports, listings & analytics
       fetchAdminReports();
       fetchAdminListings();
+      fetchAdminAnalytics();
       setActionModal({
         open: false,
         report: null,
@@ -843,6 +1037,30 @@ export default function AdminDashboard() {
     });
   }, [reports, searchQuery]);
 
+  // Filtered disputes for search query & status
+  const filteredDisputes = useMemo(() => {
+    let list = disputes;
+    if (disputeFilter !== "all") {
+      list = list.filter((d) => d.status === disputeFilter);
+    }
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase();
+    return list.filter((d) => {
+      const listingTitle = d.booking?.listing?.title || "";
+      const hostName = d.host?.name || "";
+      const renterName = d.renter?.name || "";
+      const reason = d.reason || "";
+      const renterNotes = d.renterNotes || "";
+      return (
+        listingTitle.toLowerCase().includes(q) ||
+        hostName.toLowerCase().includes(q) ||
+        renterName.toLowerCase().includes(q) ||
+        reason.toLowerCase().includes(q) ||
+        renterNotes.toLowerCase().includes(q)
+      );
+    });
+  }, [disputes, disputeFilter, searchQuery]);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[var(--color-canvas)] text-[var(--color-espresso)] font-[var(--font-sans)] transition-colors duration-200">
       {/* Mobile Drawer Overlay */}
@@ -900,6 +1118,7 @@ export default function AdminDashboard() {
             { id: "users", label: "Users Management", icon: Users },
             { id: "listings", label: "Listings Control", icon: Building2 },
             { id: "reports", label: "Reports & Flags", icon: Flag, badge: reportCounts.pending },
+            { id: "disputes", label: "Dispute Tribunal", icon: Scale, badge: disputeCounts.escalated },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1238,7 +1457,7 @@ export default function AdminDashboard() {
                             {hoveredPoint.label}
                           </span>
                           <span className="text-[var(--color-brand-primary)] font-black">
-                            ₹{hoveredPoint.revenue.toLocaleString()}
+                            ₹{Number(hoveredPoint.revenue || 0).toLocaleString("en-IN")}
                           </span>
                           <span className="text-slate-500">
                             {hoveredPoint.bookings} Rentals
@@ -1251,7 +1470,7 @@ export default function AdminDashboard() {
                         </div>
                       )}
                       <span className="text-emerald-600 font-extrabold text-xs">
-                        +24.6% Avg ROI
+                        {analytics?.averageRoi || "+5.0% Avg ROI"}
                       </span>
                     </div>
                   </div>
@@ -1267,29 +1486,35 @@ export default function AdminDashboard() {
                       </defs>
 
                       {/* Area Fill */}
-                      <path
-                        d="M 20,180 L 20,150 C 80,135 140,110 200,120 C 260,65 320,25 380,45 L 380,180 Z"
-                        fill="url(#splineGradient)"
-                      />
+                      {areaPath && (
+                        <path
+                          d={areaPath}
+                          fill="url(#splineGradient)"
+                        />
+                      )}
 
                       {/* Smooth Bezier Spline Stroke */}
-                      <path
-                        d="M 20,150 C 80,135 140,110 200,120 C 260,65 320,25 380,45"
-                        fill="none"
-                        stroke="#FF385C"
-                        strokeWidth="3.5"
-                        strokeLinecap="round"
-                      />
+                      {splinePath && (
+                        <path
+                          d={splinePath}
+                          fill="none"
+                          stroke="#FF385C"
+                          strokeWidth="3.5"
+                          strokeLinecap="round"
+                        />
+                      )}
 
                       {/* Secondary Comparison Ghost Line */}
-                      <path
-                        d="M 20,165 C 80,155 140,140 200,145 C 260,110 320,80 380,95"
-                        fill="none"
-                        stroke="#94A3B8"
-                        strokeWidth="2"
-                        strokeDasharray="4 4"
-                        strokeOpacity="0.4"
-                      />
+                      {cmpPath && (
+                        <path
+                          d={cmpPath}
+                          fill="none"
+                          stroke="#94A3B8"
+                          strokeWidth="2"
+                          strokeDasharray="4 4"
+                          strokeOpacity="0.4"
+                        />
+                      )}
 
                       {/* Interactive Data Points */}
                       {activeSeries.map((pt, idx) => {
@@ -1346,69 +1571,92 @@ export default function AdminDashboard() {
                     </div>
 
                     {/* Donut Radial Visual */}
-                    <div className="relative w-44 h-44 mx-auto my-2">
-                      <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                        {/* Background Ring */}
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="40"
-                          className="stroke-slate-100 dark:stroke-slate-800"
-                          strokeWidth="11"
-                          fill="none"
-                        />
-                        {/* Progress Segment */}
-                        <motion.circle
-                          cx="50"
-                          cy="50"
-                          r="40"
-                          stroke="#FF385C"
-                          strokeWidth="11"
-                          fill="none"
-                          strokeDasharray="251.2"
-                          initial={{ strokeDashoffset: 251.2 }}
-                          animate={{ strokeDashoffset: 45 }}
-                          transition={{ duration: 1.2, ease: "easeOut" }}
-                          strokeLinecap="round"
-                        />
-                        {/* Secondary Segment */}
-                        <motion.circle
-                          cx="50"
-                          cy="50"
-                          r="40"
-                          stroke="#4F46E5"
-                          strokeWidth="11"
-                          fill="none"
-                          strokeDasharray="251.2"
-                          strokeDashoffset="190"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      {/* Center Stats */}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                        <span className="text-2xl font-black text-[var(--color-espresso)]">
-                          86%
-                        </span>
-                        <span className="text-[10px] uppercase font-bold text-slate-400">
-                          Active Demand
-                        </span>
-                      </div>
-                    </div>
+                    {(() => {
+                      const activeDemandPct =
+                        analytics?.categoryDemand?.activeDemandPercentage ??
+                        (categories.length > 0 ? 21 : 0);
+                      const donutOffset = Math.max(
+                        0,
+                        Math.min(251.2, 251.2 - (251.2 * activeDemandPct) / 100)
+                      );
+                      const secondaryOffset = Math.max(
+                        0,
+                        Math.min(251.2, donutOffset + 60)
+                      );
+
+                      return (
+                        <div className="relative w-44 h-44 mx-auto my-2">
+                          <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                            {/* Background Ring */}
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r="40"
+                              className="stroke-slate-100 dark:stroke-slate-800"
+                              strokeWidth="11"
+                              fill="none"
+                            />
+                            {/* Progress Segment */}
+                            <motion.circle
+                              cx="50"
+                              cy="50"
+                              r="40"
+                              stroke="#FF385C"
+                              strokeWidth="11"
+                              fill="none"
+                              strokeDasharray="251.2"
+                              initial={{ strokeDashoffset: 251.2 }}
+                              animate={{ strokeDashoffset: donutOffset }}
+                              transition={{ duration: 1.2, ease: "easeOut" }}
+                              strokeLinecap="round"
+                            />
+                            {/* Secondary Segment */}
+                            <motion.circle
+                              cx="50"
+                              cy="50"
+                              r="40"
+                              stroke="#4F46E5"
+                              strokeWidth="11"
+                              fill="none"
+                              strokeDasharray="251.2"
+                              initial={{ strokeDashoffset: 251.2 }}
+                              animate={{ strokeDashoffset: secondaryOffset }}
+                              transition={{ duration: 1.4, ease: "easeOut" }}
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                          {/* Center Stats */}
+                          <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                            <span className="text-2xl font-black text-[var(--color-espresso)]">
+                              {activeDemandPct}%
+                            </span>
+                            <span className="text-[10px] uppercase font-bold text-slate-400">
+                              Active Demand
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Categories Breakdown Legend */}
                     <div className="space-y-2 mt-4">
-                      {categories.slice(0, 4).map((c, i) => {
-                        const shares = ["42%", "26%", "18%", "14%"];
-                        return (
-                          <div key={c._id} className="flex items-center justify-between text-xs">
-                            <span className="flex items-center gap-2 font-semibold text-[var(--color-espresso)] truncate">
-                              <span>{c.icon || "📦"}</span>
-                              <span className="truncate">{c.name}</span>
-                            </span>
-                            <span className="font-extrabold text-slate-500">{shares[i] || "10%"}</span>
-                          </div>
-                        );
-                      })}
+                      {(analytics?.categoryDemand?.categories && analytics.categoryDemand.categories.length > 0
+                        ? analytics.categoryDemand.categories.slice(0, 4)
+                        : categories.slice(0, 4).map((c) => ({
+                            id: c._id,
+                            name: c.name,
+                            icon: c.icon || "📦",
+                            share: 0,
+                          }))
+                      ).map((c) => (
+                        <div key={c.id || c._id} className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-2 font-semibold text-[var(--color-espresso)] truncate">
+                            <span>{c.icon || "📦"}</span>
+                            <span className="truncate">{c.name}</span>
+                          </span>
+                          <span className="font-extrabold text-slate-500">{c.share}%</span>
+                        </div>
+                      ))}
                       {categories.length === 0 && (
                         <p className="text-xs text-slate-400 text-center py-2">
                           No categories registered yet.
@@ -1419,7 +1667,7 @@ export default function AdminDashboard() {
 
                   <div className="pt-3 border-t border-[var(--color-border-subtle)] text-center">
                     <span className="text-[11px] text-[var(--color-muted-grey)]">
-                      {categories.length} Total Categories in MongoDB
+                      {analytics?.categoryDemand?.totalCategories || categories.length} Total Categories in MongoDB
                     </span>
                   </div>
                 </div>
@@ -1434,18 +1682,25 @@ export default function AdminDashboard() {
                       <p className="text-xs text-slate-400">Confirmed item rentals</p>
                     </div>
                     <span className="px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-extrabold">
-                      Peak: Sat (35)
+                      Peak: {analytics?.dailyBookingVolume?.peakDay?.label || "Sat"} ({analytics?.dailyBookingVolume?.peakDay?.bookings ?? 0})
                     </span>
                   </div>
 
                   {/* Vertical Column Bars */}
                   <div className="flex items-end justify-between gap-2 h-44 pt-4 border-b border-[var(--color-border)] px-1">
-                    {REVENUE_DATA["7D"].map((day, idx) => {
-                      const isPeak = day.label === "Sat";
-                      const height = Math.round((day.bookings / 35) * 100);
+                    {(analytics?.dailyBookingVolume?.days || REVENUE_DATA["7D"]).map((day, idx) => {
+                      const peakLabel = analytics?.dailyBookingVolume?.peakDay?.label;
+                      const isPeak = Boolean(
+                        (peakLabel ? day.label === peakLabel : day.label === "Sat") &&
+                        (day.bookings > 0 || !analytics?.dailyBookingVolume)
+                      );
+                      const maxB = analytics?.dailyBookingVolume?.maxBookings || 35;
+                      const rawHeight = maxB > 0 ? Math.round((day.bookings / maxB) * 100) : 0;
+                      const height = day.bookings > 0 ? Math.max(12, rawHeight) : 4;
+
                       return (
                         <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
-                          {isPeak && (
+                          {isPeak && day.bookings > 0 && (
                             <span className="text-[10px] font-black text-rose-500 bg-rose-500/10 px-1.5 py-0.5 rounded-full mb-1">
                               Peak
                             </span>
@@ -1456,7 +1711,7 @@ export default function AdminDashboard() {
                               animate={{ height: `${height}%` }}
                               transition={{ duration: 0.5, delay: idx * 0.05 }}
                               className={`w-full rounded-t-lg ${
-                                isPeak
+                                isPeak && day.bookings > 0
                                   ? "bg-[var(--color-brand-primary)]"
                                   : "bg-slate-300 dark:bg-slate-700 hover:bg-slate-400"
                               }`}
@@ -1553,7 +1808,7 @@ export default function AdminDashboard() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div>
                   <h2 className="text-xl font-black text-[var(--color-espresso)] tracking-tight">
-                    Rental Categories Catalog
+                    Rental Categories
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
                     Live categories stored in MongoDB. Activated categories appear in customer search dropdowns.
@@ -1713,11 +1968,11 @@ export default function AdminDashboard() {
                           </div>
 
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
-                            {cat.description || "General rental category catalog"}
+                            {cat.description || "General rental category"}
                           </p>
 
                           <div className="text-[11px] font-bold text-slate-400 mt-2.5">
-                            {(cat.count ?? 0) > 0 ? `${cat.count} Items Listed` : "Available in Catalog"}
+                            {(cat.count ?? 0) > 0 ? `${cat.count} Items Listed` : "Active Category"}
                           </div>
                         </div>
                       </div>
@@ -1758,7 +2013,7 @@ export default function AdminDashboard() {
                   <p className="text-xs text-slate-400 max-w-sm mx-auto mb-5">
                     {searchQuery
                       ? `No category matching "${searchQuery}". Clear search or create a new one.`
-                      : "Your rental category catalog is currently empty."}
+                      : "No rental categories found in database."}
                   </p>
                   <button
                     type="button"
@@ -2531,6 +2786,301 @@ export default function AdminDashboard() {
               </div>
             </motion.div>
           )}
+
+          {/* ======================================================== */}
+          {/* TAB 6: ESCROW DISPUTE & DAMAGE CLAIMS TRIBUNAL (FEATURE 2) */}
+          {/* ======================================================== */}
+          {activeTab === "disputes" && (
+            <motion.div
+              key="disputes"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              {/* TOP SUMMARY KPI CARDS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-[var(--color-surface)] p-5 rounded-3xl border border-[var(--color-border)] shadow-xs flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-rose-500 uppercase tracking-wider">Escalated to Admin</span>
+                    <h3 className="text-2xl sm:text-3xl font-black text-[var(--color-espresso)] my-1 tracking-tight">
+                      {disputeCounts.escalated}
+                    </h3>
+                    <div className="text-xs text-slate-400 font-medium">Contested & awaiting ruling</div>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-600 grid place-items-center">
+                    <Scale size={22} />
+                  </div>
+                </div>
+
+                <div className="bg-[var(--color-surface)] p-5 rounded-3xl border border-[var(--color-border)] shadow-xs flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-amber-500 uppercase tracking-wider">Pending Renter</span>
+                    <h3 className="text-2xl sm:text-3xl font-black text-[var(--color-espresso)] my-1 tracking-tight">
+                      {disputeCounts.pending}
+                    </h3>
+                    <div className="text-xs text-slate-400 font-medium">Awaiting renter rebuttal</div>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 grid place-items-center">
+                    <Eye size={22} />
+                  </div>
+                </div>
+
+                <div className="bg-[var(--color-surface)] p-5 rounded-3xl border border-[var(--color-border)] shadow-xs flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-emerald-500 uppercase tracking-wider">Resolved Cases</span>
+                    <h3 className="text-2xl sm:text-3xl font-black text-[var(--color-espresso)] my-1 tracking-tight">
+                      {disputeCounts.resolved}
+                    </h3>
+                    <div className="text-xs text-slate-400 font-medium">Settled & funds disbursed</div>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 grid place-items-center">
+                    <ShieldCheck size={22} />
+                  </div>
+                </div>
+
+                <div className="bg-[var(--color-surface)] p-5 rounded-3xl border border-[var(--color-border)] shadow-xs flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Claims</span>
+                    <h3 className="text-2xl sm:text-3xl font-black text-[var(--color-espresso)] my-1 tracking-tight">
+                      {disputeCounts.total}
+                    </h3>
+                    <div className="text-xs text-slate-400 font-medium">All deposit disputes</div>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-slate-500/10 border border-slate-500/20 text-slate-600 grid place-items-center">
+                    <DollarSign size={22} />
+                  </div>
+                </div>
+              </div>
+
+              {/* SEARCH & STATUS FILTER TOOLBAR */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="relative flex-1 max-w-md">
+                  <Search
+                    size={16}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search disputes by item, host, renter, or reason..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 focus:border-[var(--color-brand-primary)] transition-all font-medium"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Pills */}
+                <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-secondary)] rounded-2xl border border-[var(--color-border)] text-xs font-semibold overflow-x-auto">
+                  {[
+                    { id: "all", label: "All", count: disputeCounts.total },
+                    { id: "escalated_to_admin", label: "Escalated", count: disputeCounts.escalated },
+                    { id: "pending_renter", label: "Pending Renter", count: disputeCounts.pending },
+                    { id: "resolved", label: "Resolved", count: disputeCounts.resolved },
+                  ].map((filterTab) => (
+                    <button
+                      key={filterTab.id}
+                      type="button"
+                      onClick={() => setDisputeFilter(filterTab.id)}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+                        disputeFilter === filterTab.id
+                          ? "bg-[var(--color-surface)] text-[var(--color-brand-primary)] shadow-xs font-bold"
+                          : "text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)]"
+                      }`}
+                    >
+                      {filterTab.label} ({filterTab.count})
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => fetchAdminDisputes(disputeFilter)}
+                    title="Refresh Disputes"
+                    className="p-1.5 rounded-xl hover:bg-[var(--color-surface)] text-slate-500 hover:text-[var(--color-espresso)] transition-colors cursor-pointer"
+                  >
+                    <RefreshCw size={14} className={loadingDisputes ? "animate-spin" : ""} />
+                  </button>
+                </div>
+              </div>
+
+              {/* DISPUTES TABLE */}
+              <div className="bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] overflow-x-auto shadow-xs w-full">
+                <table className="w-full text-left border-collapse min-w-[850px] text-sm">
+                  <thead>
+                    <tr className="bg-[var(--color-surface-secondary)] border-b border-[var(--color-border)] text-xs text-slate-400 uppercase tracking-wider font-black">
+                      <th className="px-6 py-4">Item & Booking</th>
+                      <th className="px-6 py-4">Host (Claimant)</th>
+                      <th className="px-6 py-4">Renter (Respondent)</th>
+                      <th className="px-6 py-4">Deposit & Claim</th>
+                      <th className="px-6 py-4">Status & Ruling</th>
+                      <th className="px-6 py-4 text-right">Tribunal Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingDisputes ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                          <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-[var(--color-brand-primary)]" />
+                          <span className="text-xs font-bold">Loading live escrow disputes from database...</span>
+                        </td>
+                      </tr>
+                    ) : filteredDisputes.length > 0 ? (
+                      filteredDisputes.map((dispute) => {
+                        const booking = dispute.booking;
+                        const listing = booking?.listing;
+                        const listingTitle = listing?.title || "Rental Asset";
+                        const listingImg = listing?.images?.[0];
+                        const hostName = dispute.host?.name || "Host";
+                        const hostEmail = dispute.host?.email || "";
+                        const renterName = dispute.renter?.name || "Renter";
+                        const renterEmail = dispute.renter?.email || "";
+                        const deposit = booking?.deposit || 0;
+                        const claimAmount = dispute.claimAmount || 0;
+                        const isEscalated = dispute.status === "escalated_to_admin";
+                        const isResolved = dispute.status === "resolved" || dispute.status === "resolved_settled";
+
+                        return (
+                          <tr
+                            key={dispute._id}
+                            className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-surface-subtle)] transition-colors"
+                          >
+                            {/* Listing / Booking */}
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                {listingImg ? (
+                                  <img
+                                    src={listingImg}
+                                    alt={listingTitle}
+                                    className="w-12 h-12 rounded-xl object-cover shrink-0 border border-[var(--color-border-subtle)]"
+                                  />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-xl bg-[var(--color-surface-secondary)] border border-[var(--color-border)] flex items-center justify-center text-slate-400 shrink-0">
+                                    <Building2 size={20} />
+                                  </div>
+                                )}
+                                <div className="min-w-0 max-w-xs">
+                                  {listing?._id ? (
+                                    <Link
+                                      to={`/listings/${listing._id}`}
+                                      className="font-bold text-sm text-[var(--color-espresso)] hover:text-[var(--color-brand-primary)] hover:underline inline-flex items-center gap-1.5 truncate max-w-full"
+                                    >
+                                      <span className="truncate">{listingTitle}</span>
+                                      <ExternalLink size={12} className="shrink-0 opacity-60" />
+                                    </Link>
+                                  ) : (
+                                    <span className="font-bold text-sm text-[var(--color-espresso)]">
+                                      {listingTitle}
+                                    </span>
+                                  )}
+                                  <div className="text-[11px] text-slate-400 mt-0.5">
+                                    Booking ID: {String(booking?._id || dispute.booking).slice(-6).toUpperCase()}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Host */}
+                            <td className="px-6 py-4">
+                              <div className="font-bold text-[var(--color-espresso)] text-sm">{hostName}</div>
+                              {hostEmail && <div className="text-xs text-slate-400">{hostEmail}</div>}
+                            </td>
+
+                            {/* Renter */}
+                            <td className="px-6 py-4">
+                              <div className="font-bold text-[var(--color-espresso)] text-sm">{renterName}</div>
+                              {renterEmail && <div className="text-xs text-slate-400">{renterEmail}</div>}
+                            </td>
+
+                            {/* Deposit & Claim */}
+                            <td className="px-6 py-4">
+                              <div className="text-xs space-y-0.5">
+                                <div>
+                                  <span className="text-slate-400">Deposit: </span>
+                                  <span className="font-bold text-[var(--color-espresso)]">₹{deposit.toLocaleString("en-IN")}</span>
+                                </div>
+                                <div>
+                                  <span className="text-rose-500 font-semibold">Claimed: </span>
+                                  <span className="font-bold text-rose-600">₹{claimAmount.toLocaleString("en-IN")}</span>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Status & Ruling */}
+                            <td className="px-6 py-4">
+                              <span
+                                className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                  dispute.status === "escalated_to_admin"
+                                    ? "bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20"
+                                    : dispute.status === "pending_renter"
+                                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
+                                }`}
+                              >
+                                {dispute.status === "escalated_to_admin"
+                                  ? "Escalated to Admin"
+                                  : (dispute.status === "pending_renter" || dispute.status === "pending_renter_response")
+                                  ? "Pending Renter"
+                                  : "Resolved"}
+                              </span>
+                              {dispute.ruling && (
+                                <div className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-wider">
+                                  {dispute.ruling === "award_host_full"
+                                    ? "⚖️ Full to Host"
+                                    : dispute.ruling === "award_host_partial"
+                                    ? `⚖️ Split (₹${dispute.awardedToHost} Host)`
+                                    : dispute.ruling === "refund_renter_full"
+                                    ? "⚖️ Refund Renter"
+                                    : dispute.ruling}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenArbitration(dispute)}
+                                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                                    isEscalated
+                                      ? "bg-[var(--color-brand-primary)] text-white hover:opacity-95 shadow-rose-500/20"
+                                      : "border border-[var(--color-border)] text-slate-700 dark:text-slate-200 hover:bg-[var(--color-surface-secondary)]"
+                                  }`}
+                                >
+                                  <Scale size={13} />
+                                  <span>{isEscalated ? "Arbitrate Case" : isResolved ? "View Ruling" : "Inspect Case"}</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                          <ShieldCheck size={36} className="mx-auto mb-2 text-emerald-500 opacity-80" />
+                          <h4 className="font-bold text-sm text-[var(--color-espresso)] mb-1">
+                            {searchQuery ? "No disputes match your search query." : "No active escrow disputes."}
+                          </h4>
+                          <p className="text-xs text-slate-400">
+                            {searchQuery ? "Try clearing search filters." : "All rental deposits are healthy and uncontested."}
+                          </p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          )}
         </div>
       </main>
 
@@ -2857,6 +3407,421 @@ export default function AdminDashboard() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* ESCROW DISPUTE TRIBUNAL ARBITRATION MODAL (FEATURE 2)    */}
+        {/* ======================================================== */}
+        {arbitrationModal.open && arbitrationModal.dispute && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !arbitrationModal.submitting && setArbitrationModal((prev) => ({ ...prev, open: false }))}
+              className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-3xl bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] p-6 sm:p-7 shadow-2xl z-50 overflow-hidden max-h-[90vh] overflow-y-auto"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-[var(--color-border)] mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center shrink-0">
+                    <Scale size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-[var(--color-espresso)] tracking-tight">
+                      Escrow Dispute Tribunal
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Case #{String(arbitrationModal.dispute._id).slice(-8).toUpperCase()} •{" "}
+                      {arbitrationModal.dispute.booking?.listing?.title || "Rental Asset"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setArbitrationModal((prev) => ({ ...prev, open: false }))}
+                  disabled={arbitrationModal.submitting}
+                  className="p-1.5 rounded-full text-slate-400 hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Booking & Financial Context Summary */}
+              {(() => {
+                const d = arbitrationModal.dispute;
+                const depositHeld = d.booking?.deposit || 0;
+                const claimAmount = d.claimAmount || 0;
+                const isResolved = d.status === "resolved" || d.status === "resolved_settled";
+
+                return (
+                  <div className="space-y-5">
+                    {/* Financial Metrics Strip */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-[var(--color-surface-secondary)] border border-[var(--color-border)]">
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Escrow Deposit Held</div>
+                        <div className="text-xl font-black text-[var(--color-espresso)] mt-0.5">₹{depositHeld.toLocaleString("en-IN")}</div>
+                        <div className="text-[10px] text-slate-500">Secured in platform escrow</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-bold text-rose-500 uppercase tracking-wider">Host Damage Claim</div>
+                        <div className="text-xl font-black text-rose-600 mt-0.5">₹{claimAmount.toLocaleString("en-IN")}</div>
+                        <div className="text-[10px] text-slate-500">Claimed by host</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Current Status</div>
+                        <div className="mt-1">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                              d.status === "escalated_to_admin"
+                                ? "bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20"
+                                : d.status === "pending_renter"
+                                ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                                : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
+                            }`}
+                          >
+                            {d.status === "escalated_to_admin"
+                              ? "Contested (Escalated to Admin)"
+                              : d.status === "pending_renter"
+                              ? "Awaiting Renter Response"
+                              : "Resolved"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Parties Involved */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="p-3.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+                        <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px] block mb-1">Host (Claimant)</span>
+                        <div className="font-bold text-[var(--color-espresso)] text-sm">{d.host?.name || "Host"}</div>
+                        <div className="text-slate-400">{d.host?.email}</div>
+                        {d.host?.phone && <div className="text-slate-400">{d.host.phone}</div>}
+                      </div>
+                      <div className="p-3.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+                        <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px] block mb-1">Renter (Respondent)</span>
+                        <div className="font-bold text-[var(--color-espresso)] text-sm">{d.renter?.name || "Renter"}</div>
+                        <div className="text-slate-400">{d.renter?.email}</div>
+                        {d.renter?.phone && <div className="text-slate-400">{d.renter.phone}</div>}
+                      </div>
+                    </div>
+
+                    {/* Side-by-Side Evidence Comparison */}
+                    <div className="border border-[var(--color-border)] rounded-2xl p-4 bg-[var(--color-surface)]">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                        Physical Inspection & Claim Evidence Comparison
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Host's Claim Panel */}
+                        <div className="p-3.5 rounded-xl bg-rose-500/5 border border-rose-500/15 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-rose-600">Host Damage Claim & Post-Rental Return</span>
+                            <span className="text-[10px] font-bold text-rose-500">₹{claimAmount}</span>
+                          </div>
+                          <div>
+                            <span className="text-[11px] font-semibold text-slate-400 block">Claim Description:</span>
+                            <p className="text-xs text-[var(--color-espresso)] mt-0.5 leading-relaxed bg-[var(--color-surface)] p-2.5 rounded-lg border border-[var(--color-border)] font-medium">
+                              {d.hostReason || d.reason || "No claim explanation provided."}
+                            </p>
+                          </div>
+                          {d.booking?.returnInspectionNotes && (
+                            <div>
+                              <span className="text-[11px] font-semibold text-slate-400 block">Return Notes:</span>
+                              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 italic">
+                                "{d.booking.returnInspectionNotes}"
+                              </p>
+                            </div>
+                          )}
+                          {((d.damagePhotos && d.damagePhotos.length > 0) || (d.booking?.returnInspectionPhotos && d.booking.returnInspectionPhotos.length > 0)) && (
+                            <div>
+                              <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">Evidence Photos:</span>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {(d.damagePhotos?.length > 0 ? d.damagePhotos : d.booking?.returnInspectionPhotos || []).map((img, i) => (
+                                  <a
+                                    key={i}
+                                    href={img}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block group relative"
+                                    title="Click to view full photo"
+                                  >
+                                    <img
+                                      src={img}
+                                      alt={`Damage photo ${i + 1}`}
+                                      className="w-16 h-16 rounded-xl object-cover border border-rose-500/30 group-hover:scale-105 transition-transform"
+                                    />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center transition-opacity text-white text-[10px] font-bold">
+                                      View
+                                    </div>
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Renter's Rebuttal & Handover Pickup Panel */}
+                        <div className="p-3.5 rounded-xl bg-blue-500/5 border border-blue-500/15 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-blue-600">Renter Rebuttal & Baseline Pickup</span>
+                            <span className="text-[10px] font-bold text-slate-400">Handover Baseline</span>
+                          </div>
+                          <div>
+                            <span className="text-[11px] font-semibold text-slate-400 block">Renter Statement:</span>
+                            <p className="text-xs text-[var(--color-espresso)] mt-0.5 leading-relaxed bg-[var(--color-surface)] p-2.5 rounded-lg border border-[var(--color-border)] font-medium">
+                              {d.renterNotes ? (
+                                d.renterNotes
+                              ) : (
+                                <span className="text-slate-400 italic">No counter-statement submitted yet.</span>
+                              )}
+                            </p>
+                          </div>
+                          {d.booking?.pickupInspectionNotes && (
+                            <div>
+                              <span className="text-[11px] font-semibold text-slate-400 block">Pre-Rental Pickup Notes:</span>
+                              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 italic">
+                                "{d.booking.pickupInspectionNotes}"
+                              </p>
+                            </div>
+                          )}
+                          {d.booking?.pickupInspectionPhotos && d.booking.pickupInspectionPhotos.length > 0 && (
+                            <div>
+                              <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">Pre-Rental Condition Photos:</span>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {d.booking.pickupInspectionPhotos.map((img, i) => (
+                                  <a
+                                    key={i}
+                                    href={img}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block group relative"
+                                    title="Click to view pre-rental baseline"
+                                  >
+                                    <img
+                                      src={img}
+                                      alt={`Pickup photo ${i + 1}`}
+                                      className="w-16 h-16 rounded-xl object-cover border border-blue-500/30 group-hover:scale-105 transition-transform"
+                                    />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 rounded-xl flex items-center justify-center transition-opacity text-white text-[10px] font-bold">
+                                      View
+                                    </div>
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Resolved View OR Ruling Form */}
+                    {isResolved ? (
+                      <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-2">
+                        <div className="flex items-center gap-2 font-bold text-sm text-emerald-700 dark:text-emerald-400">
+                          <CheckCircle2 size={16} />
+                          <span>Tribunal Ruling Executed: {d.ruling?.replace(/_/g, " ").toUpperCase()}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+                          <div className="p-2.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+                            <span className="text-slate-400 block text-[10px] uppercase font-bold">Awarded to Host:</span>
+                            <span className="font-black text-sm text-[var(--color-espresso)]">₹{(d.awardedToHost || 0).toLocaleString("en-IN")}</span>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+                            <span className="text-slate-400 block text-[10px] uppercase font-bold">Refunded to Renter:</span>
+                            <span className="font-black text-sm text-emerald-600">₹{(d.awardedToRenter || 0).toLocaleString("en-IN")}</span>
+                          </div>
+                        </div>
+                        {d.adminNotes && (
+                          <div className="text-xs text-slate-600 dark:text-slate-300 pt-1">
+                            <span className="font-semibold text-slate-400">Tribunal Findings: </span>
+                            "{d.adminNotes}"
+                          </div>
+                        )}
+                        <div className="text-[11px] text-slate-400 pt-1">
+                          Resolved on {d.resolvedAt ? new Date(d.resolvedAt).toLocaleString() : "Recently"}
+                        </div>
+                      </div>
+                    ) : (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleExecuteArbitration();
+                        }}
+                        className="space-y-4 pt-2 border-t border-[var(--color-border)]"
+                      >
+                        <h4 className="text-xs font-bold text-[var(--color-espresso)] uppercase tracking-wider">
+                          Tribunal Adjudication Ruling
+                        </h4>
+
+                        {/* Error Alert */}
+                        {arbitrationModal.error && (
+                          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs font-bold text-rose-600 flex items-center gap-2">
+                            <AlertCircle size={14} className="shrink-0" />
+                            <span>{arbitrationModal.error}</span>
+                          </div>
+                        )}
+
+                        {/* Ruling Options Selector */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setArbitrationModal((prev) => ({
+                                ...prev,
+                                ruling: "award_host_full",
+                                awardedToHost: String(Math.min(claimAmount, depositHeld)),
+                                error: "",
+                              }))
+                            }
+                            className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${
+                              arbitrationModal.ruling === "award_host_full"
+                                ? "border-[var(--color-brand-primary)] bg-rose-500/10 shadow-xs"
+                                : "border-[var(--color-border)] hover:bg-[var(--color-surface-secondary)]"
+                            }`}
+                          >
+                            <div className="font-bold text-xs text-[var(--color-espresso)]">Full Host Award</div>
+                            <div className="text-[11px] text-slate-400 mt-1">
+                              Award ₹{Math.min(claimAmount, depositHeld).toLocaleString("en-IN")} to host.
+                              {depositHeld > claimAmount && ` Remainder ₹${depositHeld - claimAmount} refunded.`}
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setArbitrationModal((prev) => ({
+                                ...prev,
+                                ruling: "award_host_partial",
+                                awardedToHost: prev.awardedToHost || String(Math.round(Math.min(claimAmount, depositHeld) / 2)),
+                                error: "",
+                              }))
+                            }
+                            className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${
+                              arbitrationModal.ruling === "award_host_partial"
+                                ? "border-amber-500 bg-amber-500/10 shadow-xs"
+                                : "border-[var(--color-border)] hover:bg-[var(--color-surface-secondary)]"
+                            }`}
+                          >
+                            <div className="font-bold text-xs text-[var(--color-espresso)]">Partial Split</div>
+                            <div className="text-[11px] text-slate-400 mt-1">
+                              Specify custom compensation amount for verified damages.
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setArbitrationModal((prev) => ({
+                                ...prev,
+                                ruling: "refund_renter_full",
+                                awardedToHost: "0",
+                                error: "",
+                              }))
+                            }
+                            className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${
+                              arbitrationModal.ruling === "refund_renter_full"
+                                ? "border-emerald-500 bg-emerald-500/10 shadow-xs"
+                                : "border-[var(--color-border)] hover:bg-[var(--color-surface-secondary)]"
+                            }`}
+                          >
+                            <div className="font-bold text-xs text-[var(--color-espresso)]">Full Renter Refund</div>
+                            <div className="text-[11px] text-slate-400 mt-1">
+                              Claim denied / normal wear. Full ₹{depositHeld.toLocaleString("en-IN")} refunded to renter.
+                            </div>
+                          </button>
+                        </div>
+
+                        {/* Partial Award Input Field */}
+                        {arbitrationModal.ruling === "award_host_partial" && (
+                          <div className="p-3.5 rounded-2xl bg-[var(--color-surface-secondary)] border border-[var(--color-border)] space-y-2">
+                            <label className="block text-xs font-bold text-[var(--color-espresso)]">
+                              Partial Award Amount to Host (₹)
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">₹</span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={depositHeld}
+                                value={arbitrationModal.awardedToHost}
+                                onChange={(e) =>
+                                  setArbitrationModal((prev) => ({
+                                    ...prev,
+                                    awardedToHost: e.target.value,
+                                    error: "",
+                                  }))
+                                }
+                                placeholder="Enter partial amount (e.g. 1500)"
+                                className="w-full pl-8 pr-4 py-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 font-bold"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                              <span>Max Available Deposit: ₹{depositHeld.toLocaleString("en-IN")}</span>
+                              <span>
+                                Remainder to Renter: ₹{Math.max(0, depositHeld - (Number(arbitrationModal.awardedToHost) || 0)).toLocaleString("en-IN")}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Admin Tribunal Notes */}
+                        <div>
+                          <label className="block text-xs font-bold text-[var(--color-espresso)] mb-1">
+                            Tribunal Adjudication Statement <span className="text-slate-400 font-normal">(Recorded on permanent audit ledger)</span>
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={arbitrationModal.adminNotes}
+                            onChange={(e) =>
+                              setArbitrationModal((prev) => ({ ...prev, adminNotes: e.target.value }))
+                            }
+                            placeholder="State rationale for ruling based on pre vs post inspection photos..."
+                            className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-primary)]/20 resize-none font-medium"
+                          />
+                        </div>
+
+                        {/* Modal Footer Buttons */}
+                        <div className="pt-2 flex items-center justify-end gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setArbitrationModal((prev) => ({ ...prev, open: false }))}
+                            disabled={arbitrationModal.submitting}
+                            className="px-4 py-2.5 rounded-full border border-[var(--color-border)] text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-[var(--color-espresso)] hover:bg-[var(--color-surface-subtle)] transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={arbitrationModal.submitting}
+                            className="px-6 py-2.5 rounded-full bg-[var(--color-brand-primary)] text-white text-xs font-bold shadow-md shadow-rose-500/25 hover:opacity-95 transition-opacity cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                          >
+                            {arbitrationModal.submitting ? (
+                              <>
+                                <RefreshCw size={14} className="animate-spin" />
+                                <span>Executing Ruling...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Scale size={14} />
+                                <span>Execute Tribunal Ruling & Settle Escrow</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                );
+              })()}
             </motion.div>
           </div>
         )}
