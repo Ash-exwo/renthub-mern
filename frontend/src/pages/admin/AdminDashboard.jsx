@@ -89,7 +89,13 @@ const REVENUE_DATA = {
 
 // Helper to generate a smooth Catmull-Rom cubic Bezier SVG spline path
 function generateSplinePath(points, yKey = "y") {
-  if (!points || points.length === 0) return "";
+  if (!points || !Array.isArray(points) || points.length === 0) return "";
+  // Ensure all points have valid numeric x and [yKey]
+  const valid = points.every(
+    (p) => p && typeof p.x === "number" && typeof p[yKey] === "number" && !isNaN(p.x) && !isNaN(p[yKey])
+  );
+  if (!valid) return "";
+
   if (points.length === 1) return `M ${points[0].x},${points[0][yKey]}`;
 
   let d = `M ${points[0].x},${points[0][yKey]}`;
@@ -110,8 +116,14 @@ function generateSplinePath(points, yKey = "y") {
 }
 
 function generateAreaPath(points) {
-  if (!points || points.length === 0) return "";
+  if (!points || !Array.isArray(points) || points.length === 0) return "";
+  const valid = points.every(
+    (p) => p && typeof p.x === "number" && typeof p.y === "number" && !isNaN(p.x) && !isNaN(p.y)
+  );
+  if (!valid) return "";
+
   const spline = generateSplinePath(points, "y");
+  if (!spline) return "";
   const first = points[0];
   const last = points[points.length - 1];
   return `M ${first.x},180 L ${spline.slice(2)} L ${last.x},180 Z`;
