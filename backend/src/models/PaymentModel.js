@@ -105,10 +105,16 @@ const paymentSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Refundable security deposit status
     depositStatus: {
       type: String,
-      enum: ["unfunded", "held", "refunded", "retained_for_damage"],
+      enum: [
+        "unfunded",
+        "held",
+        "refunded",
+        "retained_for_damage",
+        "disputed",
+        "partially_refunded",
+      ],
       default: "unfunded",
     },
 

@@ -12,6 +12,9 @@ import {
   CreditCard,
   Receipt,
   Lock,
+  Scale,
+  Camera,
+  Copy,
 } from "lucide-react";
 import api from "../../utils/api";
 import Container from "../../components/Container";
@@ -48,6 +51,22 @@ export default function MyBookingsPage() {
   const [bookingToReview, setBookingToReview] = useState(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reviewedBookings, setReviewedBookings] = useState({});
+
+  // Handover & Return Protocol State
+  const [copiedOtp, setCopiedOtp] = useState(null);
+  const [viewingInspection, setViewingInspection] = useState(null);
+
+  // Security Deposit Dispute Modal State
+  const [disputeModal, setDisputeModal] = useState({
+    open: false,
+    booking: null,
+    dispute: null,
+    loading: false,
+    renterNotes: "",
+    submitting: false,
+    error: "",
+    successMsg: "",
+  });
 
   const fetchBookings = async (isBackground = false) => {
     if (!isBackground) setLoading(true);
@@ -124,9 +143,19 @@ export default function MyBookingsPage() {
       count: bookings.filter((b) => b.status === "confirmed").length,
     },
     {
+      id: "in_progress",
+      label: "In Progress",
+      count: bookings.filter((b) => b.status === "in_progress").length,
+    },
+    {
       id: "completed",
       label: "Completed",
       count: bookings.filter((b) => b.status === "completed").length,
+    },
+    {
+      id: "disputed",
+      label: "Disputed",
+      count: bookings.filter((b) => b.status === "disputed").length,
     },
     {
       id: "cancelled",
@@ -134,6 +163,65 @@ export default function MyBookingsPage() {
       count: bookings.filter((b) => b.status === "cancelled" || b.status === "rejected").length,
     },
   ];
+
+  const handleOpenDispute = async (booking) => {
+    setDisputeModal({
+      open: true,
+      booking,
+      dispute: null,
+      loading: true,
+      renterNotes: "",
+      submitting: false,
+      error: "",
+      successMsg: "",
+    });
+
+    try {
+      const res = await api.get(`/disputes/booking/${booking._id}`);
+      setDisputeModal((prev) => ({
+        ...prev,
+        dispute: res.data?.dispute || null,
+        loading: false,
+      }));
+    } catch (err) {
+      setDisputeModal((prev) => ({
+        ...prev,
+        loading: false,
+        error: err.response?.data?.message || "Failed to load dispute claim.",
+      }));
+    }
+  };
+
+  const handleRenterRespond = async (action) => {
+    if (!disputeModal.dispute) return;
+    setDisputeModal((prev) => ({ ...prev, submitting: true, error: "", successMsg: "" }));
+
+    try {
+      const res = await api.post(`/disputes/${disputeModal.dispute._id}/renter-respond`, {
+        action,
+        renterNotes: disputeModal.renterNotes,
+        renterEvidencePhotos: [],
+      });
+
+      setDisputeModal((prev) => ({
+        ...prev,
+        submitting: false,
+        dispute: res.data?.dispute || prev.dispute,
+        successMsg:
+          action === "accept"
+            ? "Damage claim accepted. Deposit settled."
+            : "Rebuttal submitted! Case escalated to RentHub Dispute Tribunal for Admin arbitration.",
+      }));
+
+      await fetchBookings(true);
+    } catch (err) {
+      setDisputeModal((prev) => ({
+        ...prev,
+        submitting: false,
+        error: err.response?.data?.message || "Failed to submit dispute response.",
+      }));
+    }
+  };
 
   const filteredBookings =
     activeTab === "all"
@@ -232,7 +320,7 @@ export default function MyBookingsPage() {
           <EmptyState
             title={`No ${activeTab !== "all" ? activeTab.toLowerCase() : ""} rentals found`}
             description="You don't have any rental bookings matching this category right now."
-            actionLabel="Explore Catalog"
+            actionLabel="Explore Rentals"
             onAction={() => (window.location.href = "/explore")}
           />
         ) : (
@@ -335,9 +423,126 @@ export default function MyBookingsPage() {
                       )}
 
                       {b.status === "confirmed" && b.paymentStatus === "escrow_held" && (
-                        <div className="mt-2.5 text-xs text-blue-800 dark:text-blue-300 bg-blue-500/10 border border-blue-500/20 p-2 rounded-lg flex items-center gap-2">
-                          <ShieldCheck size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
-                          <span>Escrow secured! Coordinate with host for handover on {formatDate(b.startDate)}.</span>
+                        <div className="mt-2.5 space-y-2">
+                          <div className="text-xs text-blue-800 dark:text-blue-300 bg-blue-500/10 border border-blue-500/20 p-2 rounded-lg flex items-center gap-2">
+                            <ShieldCheck size={14} className="shrink-0 text-blue-600 dark:text-blue-400" />
+                            <span>Escrow secured! Coordinate with host for handover on {formatDate(b.startDate)}.</span>
+                          </div>
+
+                          {b.pickupOtp && (
+                            <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-900 dark:text-indigo-200">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  <Lock size={15} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                  <div>
+                                    <span className="text-xs font-bold block">Handover Pickup PIN</span>
+                                    <span className="text-[11px] text-[var(--color-muted-grey)]">
+                                      Give this 6-digit PIN to host upon physical pickup:
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-base font-black px-3 py-1 rounded-lg bg-[var(--color-surface)] border border-indigo-500/30 text-indigo-600 dark:text-indigo-400 tracking-widest shadow-xs">
+                                    {b.pickupOtp}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(b.pickupOtp);
+                                      setCopiedOtp(b._id);
+                                      setTimeout(() => setCopiedOtp(null), 2000);
+                                    }}
+                                    className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-1"
+                                  >
+                                    <Copy size={12} />
+                                    <span>{copiedOtp === b._id ? "Copied!" : "Copy"}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Active In-Progress Rental with Return PIN & Inspection */}
+                      {b.status === "in_progress" && (
+                        <div className="mt-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-900 dark:text-emerald-200 space-y-2">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                              <div>
+                                <span className="text-xs font-bold block">Active Rental · Return PIN</span>
+                                <span className="text-[11px] text-[var(--color-muted-grey)]">
+                                  Provide this PIN to host when physically returning the asset:
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-base font-black px-3 py-1 rounded-lg bg-[var(--color-surface)] border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 tracking-widest shadow-xs">
+                                {b.returnOtp || "******"}
+                              </span>
+                              {b.returnOtp && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(b.returnOtp);
+                                    setCopiedOtp(b._id);
+                                    setTimeout(() => setCopiedOtp(null), 2000);
+                                  }}
+                                  className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-1"
+                                >
+                                  <Copy size={12} />
+                                  <span>{copiedOtp === b._id ? "Copied!" : "Copy"}</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {b.pickupInspection && (
+                            <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between text-[11px]">
+                              <span className="text-emerald-700 dark:text-emerald-300">
+                                Pre-rental condition verified at pickup
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setViewingInspection({
+                                    ...b.pickupInspection,
+                                    title: "Pre-Rental Handover Inspection Photos",
+                                  })
+                                }
+                                className="font-bold underline cursor-pointer text-emerald-700 dark:text-emerald-300 hover:text-emerald-900"
+                              >
+                                View Pre-Rental Photos ({b.pickupInspection.photos?.length || 0})
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Disputed Deposit Banner */}
+                      {b.status === "disputed" && (
+                        <div className="mt-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <AlertCircle size={15} className="text-amber-600 shrink-0" />
+                              <div>
+                                <span className="text-xs font-bold block">Damage Claim Filed by Host</span>
+                                <span className="text-[11px] text-amber-800 dark:text-amber-300">
+                                  Deposit held in escrow pending settlement or tribunal arbitration.
+                                </span>
+                              </div>
+                            </div>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs"
+                              icon={Scale}
+                              onClick={() => handleOpenDispute(b)}
+                            >
+                              Review &amp; Respond
+                            </Button>
+                          </div>
                         </div>
                       )}
 
@@ -391,7 +596,35 @@ export default function MyBookingsPage() {
                           Booking Details
                         </Button>
 
-                        {(b.status === "pending" || b.status === "confirmed") && (
+                        {b.status === "disputed" && (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            icon={Scale}
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                            onClick={() => handleOpenDispute(b)}
+                          >
+                            Review Claim
+                          </Button>
+                        )}
+
+                        {b.pickupInspection && b.status !== "in_progress" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            icon={Camera}
+                            onClick={() =>
+                              setViewingInspection({
+                                ...b.pickupInspection,
+                                title: "Handover Inspection Records",
+                              })
+                            }
+                          >
+                            Inspection
+                          </Button>
+                        )}
+
+                        {(b.status === "pending" || (b.status === "confirmed" && b.paymentStatus === "unpaid")) && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -421,7 +654,7 @@ export default function MyBookingsPage() {
                           )
                         )}
 
-                        {(b.status === "confirmed" || b.status === "completed") && (
+                        {(b.status === "confirmed" || b.status === "in_progress" || b.status === "disputed" || b.status === "completed") && (
                           <Link
                             to={`/messages?bookingId=${b._id}&targetUser=${encodeURIComponent(ownerName)}&listingTitle=${encodeURIComponent(listingTitle)}&tab=renting`}
                           >
@@ -625,6 +858,275 @@ export default function MyBookingsPage() {
         }}
         bookingId={receiptBookingId}
       />
+
+      {/* Security Deposit Dispute Modal (Tribunal Interaction) */}
+      <Modal
+        isOpen={disputeModal.open}
+        onClose={() =>
+          setDisputeModal((prev) => ({
+            ...prev,
+            open: false,
+            error: "",
+            successMsg: "",
+          }))
+        }
+        title="Security Deposit Dispute & Damage Claim"
+      >
+        {disputeModal.loading ? (
+          <div className="py-12 text-center text-[var(--color-muted-grey)]">
+            <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-xs font-semibold">Loading claim records...</p>
+          </div>
+        ) : disputeModal.error && !disputeModal.dispute ? (
+          <div className="p-4 rounded-xl bg-red-500/10 text-red-600 text-xs font-semibold text-center">
+            {disputeModal.error}
+          </div>
+        ) : disputeModal.dispute ? (
+          <div className="flex flex-col gap-4">
+            {disputeModal.successMsg && (
+              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+                {disputeModal.successMsg}
+              </div>
+            )}
+
+            {/* Claim Summary Card */}
+            <div className="p-4 rounded-2xl bg-[var(--color-surface-secondary)]/70 border border-[var(--color-border)] space-y-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted-grey)]">
+                    Dispute Status
+                  </span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs font-extrabold capitalize px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                      {disputeModal.dispute.status === "pending_renter"
+                        ? "Awaiting Your Response"
+                        : disputeModal.dispute.status === "escalated_to_admin"
+                        ? "Under Admin Tribunal Review"
+                        : "Arbitration Resolved"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted-grey)]">
+                    Host Claim Amount
+                  </span>
+                  <div className="text-lg font-black text-rose-600 dark:text-rose-400">
+                    ₹{disputeModal.dispute.claimAmount?.toLocaleString("en-IN")}
+                  </div>
+                  <span className="text-[10px] text-[var(--color-muted-grey)]">
+                    Out of ₹{(disputeModal.booking?.deposit || 0).toLocaleString("en-IN")} deposit
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-[var(--color-border-subtle)]">
+                <span className="text-xs font-bold text-[var(--color-espresso)] block mb-1">
+                  Host Damage Explanation:
+                </span>
+                <p className="text-xs text-[var(--color-secondary-text)] leading-relaxed italic bg-[var(--color-surface)] p-2.5 rounded-xl border border-[var(--color-border-subtle)] font-medium">
+                  "{disputeModal.dispute.hostReason || disputeModal.dispute.reason || "No claim explanation provided."}"
+                </p>
+              </div>
+
+              {((disputeModal.dispute.hostPhotos && disputeModal.dispute.hostPhotos.length > 0) || (disputeModal.dispute.damagePhotos && disputeModal.dispute.damagePhotos.length > 0)) && (
+                <div>
+                  <span className="text-xs font-bold text-[var(--color-espresso)] block mb-1.5">
+                    Host Damage Evidence Photos ({disputeModal.dispute.damagePhotos.length}):
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(disputeModal.dispute.hostPhotos || disputeModal.dispute.damagePhotos).map((url, i) => (
+                      <a
+                        key={i}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block aspect-square rounded-xl overflow-hidden border border-[var(--color-border)] hover:opacity-80 transition-opacity"
+                      >
+                        <img
+                          src={url}
+                          alt={`Evidence ${i + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Resolved Case Details */}
+            {disputeModal.dispute.status === "resolved" && (
+              <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/25 space-y-2">
+                <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-300 font-bold text-xs">
+                  <Scale size={16} />
+                  <span>
+                    Admin Arbitration Ruling:{" "}
+                    {disputeModal.dispute.adminRuling?.replace(/_/g, " ").toUpperCase()}
+                  </span>
+                </div>
+                <div className="text-xs text-[var(--color-secondary-text)] space-y-1">
+                  <div className="flex justify-between">
+                    <span>Awarded to Host:</span>
+                    <strong className="text-rose-600">
+                      ₹{(disputeModal.dispute.awardedToHost || 0).toLocaleString("en-IN")}
+                    </strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Refunded to Your Account:</span>
+                    <strong className="text-emerald-600">
+                      ₹{(disputeModal.dispute.refundedToRenter || 0).toLocaleString("en-IN")}
+                    </strong>
+                  </div>
+                  {disputeModal.dispute.adminNotes && (
+                    <div className="mt-2 text-[11px] italic text-[var(--color-muted-grey)]">
+                      Admin Notes: "{disputeModal.dispute.adminNotes}"
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Escalated to Admin Notice */}
+            {disputeModal.dispute.status === "escalated_to_admin" && (
+              <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-800 dark:text-blue-300 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <Clock size={14} />
+                  <span>Tribunal Investigation Active</span>
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  Your rebuttal was submitted. An escrow officer will inspect pre-rental handover records against the return condition photos to determine fair liability.
+                </p>
+                {disputeModal.dispute.renterNotes && (
+                  <div className="mt-1.5 p-2 rounded-lg bg-[var(--color-surface)] text-[var(--color-espresso)] italic">
+                    Your Statement: "{disputeModal.dispute.renterNotes}"
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Pending Renter Action Options */}
+            {(disputeModal.dispute.status === "pending_renter" || disputeModal.dispute.status === "pending_renter_response") && (
+              <div className="space-y-3 pt-2 border-t border-[var(--color-border-subtle)]">
+                <div>
+                  <label className="block text-xs font-bold text-[var(--color-espresso)] mb-1">
+                    Your Response / Rebuttal (if contesting):
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={disputeModal.renterNotes}
+                    onChange={(e) =>
+                      setDisputeModal((prev) => ({
+                        ...prev,
+                        renterNotes: e.target.value,
+                      }))
+                    }
+                    placeholder="Explain condition upon return, pre-existing wear, or provide context..."
+                    className="w-full text-xs p-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-espresso)] focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <Button
+                    variant="outline"
+                    className="border-emerald-600 text-emerald-600 hover:bg-emerald-500/10 font-bold"
+                    loading={disputeModal.submitting}
+                    onClick={() => handleRenterRespond("accept")}
+                  >
+                    Accept Claim (Settle ₹{disputeModal.dispute.claimAmount})
+                  </Button>
+
+                  <Button
+                    variant="primary"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+                    loading={disputeModal.submitting}
+                    onClick={() => handleRenterRespond("contest")}
+                  >
+                    Contest (Escalate to Admin)
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDisputeModal((prev) => ({ ...prev, open: false }))}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="py-6 text-center text-xs text-[var(--color-muted-grey)]">
+            No active claim found for this booking.
+          </div>
+        )}
+      </Modal>
+
+      {/* Inspection Photos Viewer Modal */}
+      <Modal
+        isOpen={Boolean(viewingInspection)}
+        onClose={() => setViewingInspection(null)}
+        title={viewingInspection?.title || "Handover Condition Inspection"}
+      >
+        {viewingInspection && (
+          <div className="flex flex-col gap-4">
+            {viewingInspection.notes && (
+              <div className="p-3 rounded-xl bg-[var(--color-surface-secondary)] text-xs text-[var(--color-espresso)]">
+                <span className="font-bold block mb-1">Inspection Notes:</span>
+                <p className="italic">"{viewingInspection.notes}"</p>
+              </div>
+            )}
+
+            {viewingInspection.conditionStatus && (
+              <div className="text-xs">
+                <span className="font-bold text-[var(--color-muted-grey)]">Return Condition: </span>
+                <span
+                  className={`font-bold capitalize ${
+                    viewingInspection.conditionStatus === "good"
+                      ? "text-emerald-600"
+                      : "text-rose-600"
+                  }`}
+                >
+                  {viewingInspection.conditionStatus}
+                </span>
+              </div>
+            )}
+
+            {viewingInspection.photos && viewingInspection.photos.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {viewingInspection.photos.map((url, i) => (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block aspect-square rounded-xl overflow-hidden border border-[var(--color-border)] hover:opacity-90 transition-opacity"
+                  >
+                    <img
+                      src={url}
+                      alt={`Inspection ${i + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-[var(--color-muted-grey)] py-4 text-center">
+                No inspection photos attached for this handover record.
+              </p>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" size="sm" onClick={() => setViewingInspection(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

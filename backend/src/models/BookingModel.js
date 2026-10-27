@@ -68,15 +68,80 @@ const bookingSchema = new mongoose.Schema(
       min: [0, "Total price cannot be negative."],
     },
 
-    // Lifecycle status
+    // Detailed Pricing Breakdown (Tiered duration & weekend rates)
+    weekdayDays: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    weekendDays: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    discountAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    appliedDiscountType: {
+      type: String,
+      enum: ["none", "weekly", "monthly"],
+      default: "none",
+    },
+
+    // Lifecycle status: in_progress indicates item has been physically handed over
     status: {
       type: String,
       enum: {
-        values: ["pending", "confirmed", "rejected", "cancelled", "completed"],
+        values: [
+          "pending",
+          "confirmed",
+          "in_progress",
+          "rejected",
+          "cancelled",
+          "completed",
+          "disputed",
+        ],
         message: "{VALUE} is not a supported booking status.",
       },
       default: "pending",
       index: true,
+    },
+
+    // Physical Handover & Return Verification Protocol
+    pickupOtp: {
+      type: String,
+      default: null,
+    },
+    pickupInspection: {
+      verifiedAt: { type: Date, default: null },
+      photos: { type: [String], default: [] },
+      notes: { type: String, default: "", trim: true, maxlength: 1000 },
+      verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    },
+
+    returnOtp: {
+      type: String,
+      default: null,
+    },
+    returnInspection: {
+      verifiedAt: { type: Date, default: null },
+      photos: { type: [String], default: [] },
+      notes: { type: String, default: "", trim: true, maxlength: 1000 },
+      conditionStatus: {
+        type: String,
+        enum: ["good", "damaged", "missing_items"],
+        default: "good",
+      },
+      verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    },
+
+    // Associated Damage Dispute (if any)
+    dispute: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Dispute",
+      default: null,
     },
 
     // Payment & Escrow tracking
@@ -88,7 +153,14 @@ const bookingSchema = new mongoose.Schema(
     },
     depositStatus: {
       type: String,
-      enum: ["unfunded", "held", "refunded", "retained_for_damage"],
+      enum: [
+        "unfunded",
+        "held",
+        "refunded",
+        "retained_for_damage",
+        "disputed",
+        "partially_refunded",
+      ],
       default: "unfunded",
     },
     payment: {

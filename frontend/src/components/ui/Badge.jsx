@@ -45,6 +45,15 @@ export function StatusBadge({ status, size = "md", className = "" }) {
   if (["available", "active", "approved", "completed", "published"].includes(norm)) {
     variant = "success";
     label = norm.charAt(0).toUpperCase() + norm.slice(1);
+  } else if (norm === "in_progress") {
+    variant = "info";
+    label = "In Progress";
+  } else if (norm === "disputed") {
+    variant = "warning";
+    label = "Disputed";
+  } else if (norm === "confirmed") {
+    variant = "primary";
+    label = "Confirmed";
   } else if (["pending", "pending review", "upcoming"].includes(norm)) {
     variant = "warning";
     label = "Pending";

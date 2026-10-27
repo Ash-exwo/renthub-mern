@@ -150,10 +150,13 @@ exports.processPayment = async (req, res) => {
 
     await payment.save();
 
-    // Atomically link to booking
+    // Atomically link to booking and guarantee pickup OTP is generated
     booking.paymentStatus = "escrow_held";
     booking.depositStatus = booking.deposit > 0 ? "held" : "unfunded";
     booking.payment = payment._id;
+    if (!booking.pickupOtp) {
+      booking.pickupOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    }
     await booking.save();
 
     // Send in-app notification to host

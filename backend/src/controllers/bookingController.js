@@ -100,14 +100,16 @@ exports.createBooking = async (req, res) => {
       });
     }
 
-    // 5. Server-side price calculation (Never trust client prices)
-    const diffTime = end.getTime() - start.getTime();
-    const days = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-    const dailyRate = Number(listing.rentalPricePerDay || 0);
-    const basePrice = dailyRate * days;
-    const deposit = Number(listing.deposit || 0);
-    const serviceFee = Math.round(basePrice * 0.05); // Standard 5% platform service fee
-    const totalPrice = basePrice + deposit + serviceFee;
+    // 5. Server-side price calculation (incorporating weekend rates & duration discounts)
+    const { calculateRentalPricing } = require("../utils/pricingCalculator");
+    let pricing;
+    try {
+      pricing = calculateRentalPricing(listing, start, end);
+    } catch (pricingErr) {
+      return res.status(pricingErr.status || 400).json({ message: pricingErr.message });
+    }
+
+    const pickupOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
     // 6. Create booking record
     const booking = new Booking({
@@ -116,13 +118,18 @@ exports.createBooking = async (req, res) => {
       owner: listing.owner,
       startDate: start,
       endDate: end,
-      days,
-      dailyRate,
-      basePrice,
-      deposit,
-      serviceFee,
-      totalPrice,
+      days: pricing.days,
+      dailyRate: pricing.dailyRate,
+      weekdayDays: pricing.weekdayDays,
+      weekendDays: pricing.weekendDays,
+      discountAmount: pricing.discountAmount,
+      appliedDiscountType: pricing.appliedDiscountType,
+      basePrice: pricing.basePrice,
+      deposit: pricing.deposit,
+      serviceFee: pricing.serviceFee,
+      totalPrice: pricing.totalPrice,
       status: "pending",
+      pickupOtp,
       notes: notes ? String(notes).trim().slice(0, 500) : "",
     });
 
@@ -138,7 +145,7 @@ exports.createBooking = async (req, res) => {
       sender: renterId,
       type: "booking_request",
       title: "New Rental Request Received",
-      message: `${req.user?.name || "A renter"} submitted a booking request for "${listing.title}" (${days} ${days === 1 ? "day" : "days"}).`,
+      message: `${req.user?.name || "A renter"} submitted a booking request for "${listing.title}" (${pricing.days} ${pricing.days === 1 ? "day" : "days"}).`,
       booking: booking._id,
       listing: listing._id,
       link: "/owner/dashboard",
@@ -273,7 +280,7 @@ exports.updateBookingStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid booking ID format." });
     }
 
-    const validStatuses = ["confirmed", "rejected", "cancelled", "completed"];
+    const validStatuses = ["confirmed", "in_progress", "rejected", "cancelled", "completed", "disputed"];
     if (!nextStatus || !validStatuses.includes(nextStatus)) {
       return res.status(400).json({
         message: `Invalid status. Permitted statuses are: ${validStatuses.join(", ")}`,
@@ -305,20 +312,21 @@ exports.updateBookingStatus = async (req, res) => {
     if (isOwner) {
       // Owner can:
       // pending -> confirmed | rejected
-      // confirmed -> completed
+      // confirmed -> in_progress | completed
+      // in_progress -> completed | disputed
       if (currentStatus === "pending") {
         if (!["confirmed", "rejected"].includes(nextStatus)) {
           return res.status(400).json({
             message: `As owner, you can only accept (confirm) or reject a pending request.`,
           });
         }
-      } else if (currentStatus === "confirmed") {
-        if (nextStatus !== "completed") {
+      } else if (currentStatus === "confirmed" || currentStatus === "in_progress") {
+        if (!["in_progress", "completed", "disputed"].includes(nextStatus)) {
           return res.status(400).json({
-            message: `As owner, you can only mark a confirmed booking as completed.`,
+            message: `As owner, permitted transitions from ${currentStatus} are: in_progress, completed, or disputed.`,
           });
         }
-        if (booking.paymentStatus !== "escrow_held") {
+        if (nextStatus === "completed" && booking.paymentStatus !== "escrow_held") {
           return res.status(400).json({
             message: "Cannot mark booking as completed: renter has not secured payment into escrow yet.",
           });
@@ -688,4 +696,208 @@ exports.removeBlockedDate = async (req, res) => {
     });
   }
 };
+
+/**
+ * POST /api/bookings/:id/verify-pickup
+ * Host enters the 6-digit Pickup OTP provided by renter, conducts condition inspection, and starts rental.
+ */
+exports.verifyPickup = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rawOtp = req.body.otp || req.body.pickupOtp;
+    const otp = rawOtp ? String(rawOtp).trim() : "";
+    const { photos = [], notes = "" } = req.body;
+    const hostId = req.user._id.toString();
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid booking ID format." });
+    }
+
+    const booking = await Booking.findById(id).populate("listing", "title");
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    if (booking.owner.toString() !== hostId) {
+      return res.status(403).json({ message: "Only the host can verify physical item pickup." });
+    }
+
+    if (booking.status !== "confirmed") {
+      return res.status(400).json({ message: `Cannot verify pickup for a booking with status '${booking.status}'.` });
+    }
+
+    if (booking.paymentStatus !== "escrow_held") {
+      return res.status(400).json({ message: "Cannot verify pickup: rental payment must be secured in escrow first." });
+    }
+
+    if (!otp || String(otp).trim() !== String(booking.pickupOtp).trim()) {
+      return res.status(400).json({ message: "Invalid Pickup OTP code. Please ask the renter for their 6-digit code." });
+    }
+
+    const returnOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    booking.status = "in_progress";
+    booking.returnOtp = returnOtp;
+    booking.pickupInspection = {
+      verifiedAt: new Date(),
+      photos: Array.isArray(photos) ? photos : [],
+      notes: notes ? notes.trim() : "",
+      verifiedBy: req.user._id,
+    };
+    await booking.save();
+
+    // Notify renter that rental is in progress
+    createNotification({
+      recipient: booking.renter,
+      sender: booking.owner,
+      type: "general",
+      title: "Item Handover Verified! 🚀",
+      message: `Pickup confirmed for "${booking.listing?.title}". Your rental is now in progress! Return PIN: ${returnOtp}.`,
+      booking: booking._id,
+      listing: booking.listing._id || booking.listing,
+      link: "/bookings",
+    }).catch(() => {});
+
+    const updated = await Booking.findById(booking._id)
+      .populate("listing", "title images location")
+      .populate("renter", "name email phone")
+      .populate("owner", "name email phone");
+
+    return res.status(200).json({
+      success: true,
+      message: "Item handover verified successfully! Rental is now in progress.",
+      booking: updated,
+    });
+  } catch (error) {
+    console.error("verifyPickup error:", error);
+    return res.status(500).json({ message: "Failed to verify item pickup.", error: error.message });
+  }
+};
+
+/**
+ * POST /api/bookings/:id/generate-return-otp
+ * Generates or retrieves the 6-digit Return OTP for physical return verification
+ */
+exports.generateReturnOtp = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id.toString();
+
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    if (booking.renter.toString() !== userId && booking.owner.toString() !== userId) {
+      return res.status(403).json({ message: "Unauthorized." });
+    }
+
+    if (!booking.returnOtp) {
+      booking.returnOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      await booking.save();
+    }
+
+    return res.status(200).json({
+      success: true,
+      returnOtp: booking.returnOtp,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to retrieve return OTP.", error: error.message });
+  }
+};
+
+/**
+ * POST /api/bookings/:id/verify-return
+ * Host inputs the 6-digit Return OTP provided by renter, conducts return condition inspection,
+ * and either completes rental or files damage claim.
+ */
+exports.verifyReturn = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rawOtp = req.body.otp || req.body.returnOtp;
+    const otp = rawOtp ? String(rawOtp).trim() : "";
+    const { photos = [], notes = "", conditionStatus = "good" } = req.body;
+    const hostId = req.user._id.toString();
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid booking ID format." });
+    }
+
+    const booking = await Booking.findById(id).populate("listing", "title");
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    if (booking.owner.toString() !== hostId) {
+      return res.status(403).json({ message: "Only the host can verify return." });
+    }
+
+    if (!["in_progress", "confirmed"].includes(booking.status)) {
+      return res.status(400).json({ message: `Cannot verify return for a booking with status '${booking.status}'.` });
+    }
+
+    if (!otp || String(otp).trim() !== String(booking.returnOtp).trim()) {
+      return res.status(400).json({ message: "Invalid Return OTP code. Please ask the renter for their 6-digit return PIN." });
+    }
+
+    booking.returnInspection = {
+      verifiedAt: new Date(),
+      photos: Array.isArray(photos) ? photos : [],
+      notes: notes ? notes.trim() : "",
+      conditionStatus: conditionStatus || "good",
+      verifiedBy: req.user._id,
+    };
+
+    if (conditionStatus === "good") {
+      // Completed cleanly: release payout & refund full deposit
+      booking.status = "completed";
+      await booking.save();
+
+      const { releaseHostPayoutAndRefundDeposit } = require("./paymentController");
+      await releaseHostPayoutAndRefundDeposit(booking._id).catch(() => {});
+
+      createNotification({
+        recipient: booking.renter,
+        sender: booking.owner,
+        type: "rental_completed",
+        title: "Rental Completed & Deposit Returned! ✨",
+        message: `Your return of "${booking.listing?.title}" was verified in good condition. Security deposit refunded!`,
+        booking: booking._id,
+        listing: booking.listing._id || booking.listing,
+        link: "/bookings",
+      }).catch(() => {});
+    } else {
+      // Damaged or missing items -> shift to disputed
+      booking.status = "disputed";
+      booking.depositStatus = "disputed";
+      await booking.save();
+
+      createNotification({
+        recipient: booking.renter,
+        sender: booking.owner,
+        type: "general",
+        title: "Return Marked with Damage / Issues ⚠️",
+        message: `Host reported condition issues upon return of "${booking.listing?.title}". Deposit has been placed on hold.`,
+        booking: booking._id,
+        listing: booking.listing._id || booking.listing,
+        link: "/bookings",
+      }).catch(() => {});
+    }
+
+    const updated = await Booking.findById(booking._id)
+      .populate("listing", "title images location")
+      .populate("renter", "name email phone")
+      .populate("owner", "name email phone");
+
+    return res.status(200).json({
+      success: true,
+      message: conditionStatus === "good" ? "Return verified! Rental completed and deposit refunded." : "Return recorded with damage. Deposit placed on hold for claim submission.",
+      booking: updated,
+    });
+  } catch (error) {
+    console.error("verifyReturn error:", error);
+    return res.status(500).json({ message: "Failed to verify return.", error: error.message });
+  }
+};
+
 

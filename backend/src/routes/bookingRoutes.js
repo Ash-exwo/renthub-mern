@@ -24,6 +24,11 @@ router.get("/:id", bookingController.getBookingById);
 // Update status (Owner: confirm/reject/complete, Renter: cancel)
 router.patch("/:id/status", bookingController.updateBookingStatus);
 
+// Physical Handover & Return Verification Protocol (6-Digit OTP + Condition Inspection)
+router.post("/:id/verify-pickup", bookingController.verifyPickup);
+router.post("/:id/generate-return-otp", bookingController.generateReturnOtp);
+router.post("/:id/verify-return", bookingController.verifyReturn);
+
 // Owner listing calendar & blackout dates management
 router.get("/listing/:listingId/owner-calendar", bookingController.getOwnerListingCalendar);
 router.post("/listing/:listingId/blocked-dates", bookingController.addBlockedDates);
