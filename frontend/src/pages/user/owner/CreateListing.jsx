@@ -22,6 +22,7 @@ import {
 } from "../../../components/ui";
 import ImageUploader from "../../../components/ImageUploader";
 import MapPicker from "../../../components/MapPicker";
+import AiDescriptionButton from "../../../components/AiDescriptionButton";
 
 const STEPS = [
   { id: 1, title: "Basic Info", sub: "Title & category" },
@@ -53,6 +54,11 @@ export default function CreateListing() {
     coordinates: null,
     rentalPricePerDay: "",
     deposit: "",
+    weekendPricePerDay: "",
+    weeklyDiscountPercentage: "",
+    monthlyDiscountPercentage: "",
+    minRentalDays: "1",
+    maxRentalDays: "90",
     availability: "available",
     rules: "Valid Govt ID required at handover. Return in original clean condition.",
   });
@@ -121,6 +127,18 @@ export default function CreateListing() {
       if (!formData.rentalPricePerDay || Number(formData.rentalPricePerDay) <= 0) {
         errs.rentalPricePerDay = "Enter a valid daily rental price.";
       }
+      if (formData.weeklyDiscountPercentage && (Number(formData.weeklyDiscountPercentage) < 0 || Number(formData.weeklyDiscountPercentage) > 80)) {
+        errs.weeklyDiscountPercentage = "Discount must be between 0% and 80%.";
+      }
+      if (formData.monthlyDiscountPercentage && (Number(formData.monthlyDiscountPercentage) < 0 || Number(formData.monthlyDiscountPercentage) > 80)) {
+        errs.monthlyDiscountPercentage = "Discount must be between 0% and 80%.";
+      }
+      if (formData.minRentalDays && Number(formData.minRentalDays) < 1) {
+        errs.minRentalDays = "Minimum rental duration must be at least 1 day.";
+      }
+      if (formData.maxRentalDays && formData.minRentalDays && Number(formData.maxRentalDays) < Number(formData.minRentalDays)) {
+        errs.maxRentalDays = "Maximum rental duration cannot be less than minimum rental days.";
+      }
     }
     return errs;
   };
@@ -150,6 +168,11 @@ export default function CreateListing() {
         category: formData.category,
         rentalPricePerDay: Number(formData.rentalPricePerDay),
         deposit: Number(formData.deposit || 0),
+        weekendPricePerDay: formData.weekendPricePerDay ? Number(formData.weekendPricePerDay) : undefined,
+        weeklyDiscountPercentage: formData.weeklyDiscountPercentage ? Number(formData.weeklyDiscountPercentage) : 0,
+        monthlyDiscountPercentage: formData.monthlyDiscountPercentage ? Number(formData.monthlyDiscountPercentage) : 0,
+        minRentalDays: formData.minRentalDays ? Math.max(1, Number(formData.minRentalDays)) : 1,
+        maxRentalDays: formData.maxRentalDays ? Math.max(1, Number(formData.maxRentalDays)) : 90,
         location: formData.location.trim(),
         coordinates: formData.coordinates,
         images,
@@ -166,10 +189,10 @@ export default function CreateListing() {
         (err.response?.status === 413
           ? "Photo size is too large. Please upload a smaller photo."
           : err.response?.status === 401
-          ? "Your session expired. Please log in again to publish."
+          ? "Your session expired. Please log in again to list your item."
           : err.response?.status === 400
           ? "Please verify all required listing fields."
-          : "Failed to publish listing. Please check required fields and network connection.");
+          : "Failed to list item. Please check required fields and network connection.");
       setServerError(serverMsg);
     } finally {
       setLoading(false);
@@ -381,17 +404,36 @@ export default function CreateListing() {
                   )}
                 </div>
 
-                <Textarea
-                  label="Listing Description"
-                  name="description"
-                  rows={6}
-                  placeholder="Describe condition, technical specifications, what's included (chargers, batteries, cases, accessories), and best use cases..."
-                  value={formData.description}
-                  onChange={handleChange}
-                  error={errors.description}
-                  helperText="Minimum 20 characters. Include all included accessories, cables, and packaging directly here in the description."
-                  required
-                />
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-[var(--color-espresso)] flex items-center gap-1">
+                      Listing Description <span className="text-[var(--color-terracotta)]" aria-hidden="true">*</span>
+                    </label>
+                    <AiDescriptionButton
+                      title={formData.title}
+                      categoryName={selectedCategoryDoc?.name || ""}
+                      features={formData.amenitiesInput}
+                      location={formData.location}
+                      onGenerated={(generatedText) => {
+                        setFormData((prev) => ({ ...prev, description: generatedText }));
+                        if (errors.description) {
+                          setErrors((prev) => ({ ...prev, description: "" }));
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <Textarea
+                    name="description"
+                    rows={6}
+                    placeholder="Describe condition, technical specifications, what's included (chargers, batteries, cases, accessories), and best use cases..."
+                    value={formData.description}
+                    onChange={handleChange}
+                    error={errors.description}
+                    helperText="Minimum 20 characters. Include all included accessories, cables, and packaging directly here in the description."
+                    required
+                  />
+                </div>
               </div>
             )}
 
@@ -496,6 +538,88 @@ export default function CreateListing() {
                   />
                 </div>
 
+                {/* Advanced Pricing Engine (Tiered Discounts, Weekend Rate, Duration Limits) */}
+                <div className="p-4 rounded-2xl bg-[var(--color-surface-secondary)]/50 border border-[var(--color-border)] space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-[var(--color-espresso)]">
+                        Dynamic Pricing &amp; Duration Rules
+                      </h3>
+                      <p className="text-xs text-[var(--color-muted-grey)]">
+                        Set custom weekend rates, duration discounts, and rental duration limits.
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                      Smart Engine
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <Input
+                      label="Weekend Rate / Day (₹)"
+                      name="weekendPricePerDay"
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 1200 (optional)"
+                      value={formData.weekendPricePerDay}
+                      onChange={handleChange}
+                      helperText="Applied for Fri, Sat &amp; Sun"
+                    />
+
+                    <Input
+                      label="Weekly Discount (%)"
+                      name="weeklyDiscountPercentage"
+                      type="number"
+                      min="0"
+                      max="80"
+                      placeholder="e.g. 10 (≥ 7 days)"
+                      value={formData.weeklyDiscountPercentage}
+                      onChange={handleChange}
+                      error={errors.weeklyDiscountPercentage}
+                      helperText="For rentals 7 days or longer"
+                    />
+
+                    <Input
+                      label="Monthly Discount (%)"
+                      name="monthlyDiscountPercentage"
+                      type="number"
+                      min="0"
+                      max="80"
+                      placeholder="e.g. 25 (≥ 30 days)"
+                      value={formData.monthlyDiscountPercentage}
+                      onChange={handleChange}
+                      error={errors.monthlyDiscountPercentage}
+                      helperText="For rentals 30 days or longer"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-[var(--color-border-subtle)]">
+                    <Input
+                      label="Min Rental Duration (Days)"
+                      name="minRentalDays"
+                      type="number"
+                      min="1"
+                      placeholder="1"
+                      value={formData.minRentalDays}
+                      onChange={handleChange}
+                      error={errors.minRentalDays}
+                      helperText="Minimum consecutive days required"
+                    />
+
+                    <Input
+                      label="Max Rental Duration (Days)"
+                      name="maxRentalDays"
+                      type="number"
+                      min="1"
+                      placeholder="90"
+                      value={formData.maxRentalDays}
+                      onChange={handleChange}
+                      error={errors.maxRentalDays}
+                      helperText="Maximum allowable reservation length"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-[var(--color-espresso)] mb-1.5">
                     Initial Availability
@@ -537,9 +661,9 @@ export default function CreateListing() {
                 {/* The Interactive Preview Card */}
                 <div className="max-w-sm mx-auto w-full">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted-grey)] mb-2 flex items-center justify-between">
-                    <span>Catalog Card Appearance</span>
+                    <span>Listing Card Preview</span>
                     <span className="text-emerald-600 bg-emerald-500/10 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
-                      Ready to Publish
+                      Ready to List
                     </span>
                   </div>
                   <ListingCard listing={previewListing} isPreview={true} />
@@ -621,7 +745,7 @@ export default function CreateListing() {
                   loading={loading}
                   icon={Sparkles}
                 >
-                  Publish Listing Now
+                  List Item Now
                 </Button>
               )}
             </div>

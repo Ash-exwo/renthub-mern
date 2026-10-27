@@ -32,6 +32,39 @@ const listingSchema = new mongoose.Schema(
       min: [0, "Rental price cannot be negative."],
     },
 
+    // Advanced Pricing & Duration Engine
+    weekendPricePerDay: {
+      type: Number,
+      default: null,
+      min: [0, "Weekend price cannot be negative."],
+    },
+
+    weeklyDiscountPercentage: {
+      type: Number,
+      default: 0,
+      min: [0, "Weekly discount percentage cannot be negative."],
+      max: [80, "Weekly discount cannot exceed 80%."],
+    },
+
+    monthlyDiscountPercentage: {
+      type: Number,
+      default: 0,
+      min: [0, "Monthly discount percentage cannot be negative."],
+      max: [90, "Monthly discount cannot exceed 90%."],
+    },
+
+    minRentalDays: {
+      type: Number,
+      default: 1,
+      min: [1, "Minimum rental duration must be at least 1 day."],
+    },
+
+    maxRentalDays: {
+      type: Number,
+      default: 60,
+      min: [1, "Maximum rental duration must be at least 1 day."],
+    },
+
     location: {
       type: String,
       required: [true, "Location is required."],

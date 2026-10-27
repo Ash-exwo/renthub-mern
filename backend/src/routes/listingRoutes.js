@@ -18,7 +18,11 @@ const {
   getAdminListings,
   adminUpdateListingStatus,
   adminDeleteListing,
+  calculateQuote,
 } = require("../controllers/listingController");
+
+// Public rental price calculation quote route
+router.post("/:id/calculate-quote", calculateQuote);
 
 // Public browsing & category filtering (Steps 20 & 21) - optional auth excludes owner's own listings in Renter mode
 router.get("/", optionalProtectUser, getAllListings);

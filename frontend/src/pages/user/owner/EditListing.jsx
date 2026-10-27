@@ -19,6 +19,7 @@ import {
 } from "../../../components/ui";
 import ImageUploader from "../../../components/ImageUploader";
 import MapPicker from "../../../components/MapPicker";
+import AiDescriptionButton from "../../../components/AiDescriptionButton";
 
 export default function EditListing() {
   const { id } = useParams();
@@ -44,6 +45,11 @@ export default function EditListing() {
     coordinates: null,
     rentalPricePerDay: "",
     deposit: "",
+    weekendPricePerDay: "",
+    weeklyDiscountPercentage: "",
+    monthlyDiscountPercentage: "",
+    minRentalDays: "1",
+    maxRentalDays: "90",
     availability: "available",
     rules: "",
   });
@@ -89,6 +95,11 @@ export default function EditListing() {
           coordinates: listing.coordinates || null,
           rentalPricePerDay: listing.rentalPricePerDay || "",
           deposit: listing.deposit !== undefined ? listing.deposit : "",
+          weekendPricePerDay: listing.weekendPricePerDay !== undefined && listing.weekendPricePerDay !== null ? listing.weekendPricePerDay : "",
+          weeklyDiscountPercentage: listing.weeklyDiscountPercentage !== undefined && listing.weeklyDiscountPercentage !== null ? listing.weeklyDiscountPercentage : "",
+          monthlyDiscountPercentage: listing.monthlyDiscountPercentage !== undefined && listing.monthlyDiscountPercentage !== null ? listing.monthlyDiscountPercentage : "",
+          minRentalDays: listing.minRentalDays || "1",
+          maxRentalDays: listing.maxRentalDays || "90",
           availability: listing.availability || "available",
           rules: listing.rules || "",
         });
@@ -144,6 +155,18 @@ export default function EditListing() {
     if (!formData.rentalPricePerDay || Number(formData.rentalPricePerDay) <= 0) {
       errs.rentalPricePerDay = "Enter a valid daily rental price.";
     }
+    if (formData.weeklyDiscountPercentage && (Number(formData.weeklyDiscountPercentage) < 0 || Number(formData.weeklyDiscountPercentage) > 80)) {
+      errs.weeklyDiscountPercentage = "Discount must be between 0% and 80%.";
+    }
+    if (formData.monthlyDiscountPercentage && (Number(formData.monthlyDiscountPercentage) < 0 || Number(formData.monthlyDiscountPercentage) > 80)) {
+      errs.monthlyDiscountPercentage = "Discount must be between 0% and 80%.";
+    }
+    if (formData.minRentalDays && Number(formData.minRentalDays) < 1) {
+      errs.minRentalDays = "Minimum rental duration must be at least 1 day.";
+    }
+    if (formData.maxRentalDays && formData.minRentalDays && Number(formData.maxRentalDays) < Number(formData.minRentalDays)) {
+      errs.maxRentalDays = "Maximum rental duration cannot be less than minimum rental days.";
+    }
     if (images.length === 0) {
       errs.images = "Please provide at least one photo for your listing.";
     }
@@ -169,6 +192,11 @@ export default function EditListing() {
         category: formData.category,
         rentalPricePerDay: Number(formData.rentalPricePerDay),
         deposit: Number(formData.deposit || 0),
+        weekendPricePerDay: formData.weekendPricePerDay !== "" && formData.weekendPricePerDay !== undefined ? Number(formData.weekendPricePerDay) : undefined,
+        weeklyDiscountPercentage: formData.weeklyDiscountPercentage !== "" ? Number(formData.weeklyDiscountPercentage) : 0,
+        monthlyDiscountPercentage: formData.monthlyDiscountPercentage !== "" ? Number(formData.monthlyDiscountPercentage) : 0,
+        minRentalDays: formData.minRentalDays ? Math.max(1, Number(formData.minRentalDays)) : 1,
+        maxRentalDays: formData.maxRentalDays ? Math.max(1, Number(formData.maxRentalDays)) : 90,
         rules: formData.rules.trim(),
         location: formData.location.trim(),
         coordinates: formData.coordinates,
@@ -355,17 +383,36 @@ export default function EditListing() {
                   )}
                 </div>
 
-                <Textarea
-                  label="Listing Description"
-                  name="description"
-                  rows={6}
-                  value={formData.description}
-                  onChange={handleChange}
-                  error={errors.description}
-                  placeholder="Describe condition, specifications, what's included (accessories, chargers, cases), and usage guidelines..."
-                  helperText="Minimum 20 characters. Include all included accessories, chargers, and cases directly here."
-                  required
-                />
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-[var(--color-espresso)] flex items-center gap-1">
+                      Listing Description <span className="text-[var(--color-terracotta)]" aria-hidden="true">*</span>
+                    </label>
+                    <AiDescriptionButton
+                      title={formData.title}
+                      categoryName={selectedCategoryDoc?.name || ""}
+                      features={formData.rules}
+                      location={formData.location}
+                      onGenerated={(generatedText) => {
+                        setFormData((prev) => ({ ...prev, description: generatedText }));
+                        if (errors.description) {
+                          setErrors((prev) => ({ ...prev, description: "" }));
+                        }
+                      }}
+                    />
+                  </div>
+
+                  <Textarea
+                    name="description"
+                    rows={6}
+                    value={formData.description}
+                    onChange={handleChange}
+                    error={errors.description}
+                    placeholder="Describe condition, specifications, what's included (accessories, chargers, cases), and usage guidelines..."
+                    helperText="Minimum 20 characters. Include all included accessories, chargers, and cases directly here."
+                    required
+                  />
+                </div>
               </div>
 
               {/* Section 2: Location & Interactive Map Coordinates */}
@@ -444,6 +491,88 @@ export default function EditListing() {
                     onChange={handleChange}
                     helperText="Refunded upon safe return."
                   />
+                </div>
+
+                {/* Advanced Pricing Engine (Tiered Discounts, Weekend Rate, Duration Limits) */}
+                <div className="p-4 rounded-2xl bg-[var(--color-surface-secondary)]/50 border border-[var(--color-border)] space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-[var(--color-espresso)]">
+                        Dynamic Pricing &amp; Duration Rules
+                      </h3>
+                      <p className="text-xs text-[var(--color-muted-grey)]">
+                        Set custom weekend rates, duration discounts, and rental duration limits.
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                      Smart Engine
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <Input
+                      label="Weekend Rate / Day (₹)"
+                      name="weekendPricePerDay"
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 1200 (optional)"
+                      value={formData.weekendPricePerDay}
+                      onChange={handleChange}
+                      helperText="Applied for Fri, Sat &amp; Sun"
+                    />
+
+                    <Input
+                      label="Weekly Discount (%)"
+                      name="weeklyDiscountPercentage"
+                      type="number"
+                      min="0"
+                      max="80"
+                      placeholder="e.g. 10 (≥ 7 days)"
+                      value={formData.weeklyDiscountPercentage}
+                      onChange={handleChange}
+                      error={errors.weeklyDiscountPercentage}
+                      helperText="For rentals 7 days or longer"
+                    />
+
+                    <Input
+                      label="Monthly Discount (%)"
+                      name="monthlyDiscountPercentage"
+                      type="number"
+                      min="0"
+                      max="80"
+                      placeholder="e.g. 25 (≥ 30 days)"
+                      value={formData.monthlyDiscountPercentage}
+                      onChange={handleChange}
+                      error={errors.monthlyDiscountPercentage}
+                      helperText="For rentals 30 days or longer"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-[var(--color-border-subtle)]">
+                    <Input
+                      label="Min Rental Duration (Days)"
+                      name="minRentalDays"
+                      type="number"
+                      min="1"
+                      placeholder="1"
+                      value={formData.minRentalDays}
+                      onChange={handleChange}
+                      error={errors.minRentalDays}
+                      helperText="Minimum consecutive days required"
+                    />
+
+                    <Input
+                      label="Max Rental Duration (Days)"
+                      name="maxRentalDays"
+                      type="number"
+                      min="1"
+                      placeholder="90"
+                      value={formData.maxRentalDays}
+                      onChange={handleChange}
+                      error={errors.maxRentalDays}
+                      helperText="Maximum allowable reservation length"
+                    />
+                  </div>
                 </div>
 
                 <div>

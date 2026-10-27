@@ -72,6 +72,14 @@ exports.createListing = async (req, res) => {
           : undefined,
       images: Array.isArray(images) ? images : [],
       deposit: Number(deposit || 0),
+      weekendPricePerDay:
+        req.body.weekendPricePerDay !== undefined && req.body.weekendPricePerDay !== null && req.body.weekendPricePerDay !== ""
+          ? Number(req.body.weekendPricePerDay)
+          : null,
+      weeklyDiscountPercentage: Number(req.body.weeklyDiscountPercentage || 0),
+      monthlyDiscountPercentage: Number(req.body.monthlyDiscountPercentage || 0),
+      minRentalDays: Math.max(1, Number(req.body.minRentalDays || 1)),
+      maxRentalDays: Math.max(1, Number(req.body.maxRentalDays || 60)),
       amenities: Array.isArray(amenities)
         ? amenities
         : typeof amenities === "string"
@@ -241,8 +249,25 @@ exports.updateListing = async (req, res) => {
         lng: typeof coordinates.lng === "number" ? coordinates.lng : null,
       };
     }
-    if (images !== undefined && Array.isArray(images)) listing.images = images;
     if (deposit !== undefined) listing.deposit = Number(deposit || 0);
+    if (req.body.weekendPricePerDay !== undefined) {
+      listing.weekendPricePerDay =
+        req.body.weekendPricePerDay !== null && req.body.weekendPricePerDay !== ""
+          ? Number(req.body.weekendPricePerDay)
+          : null;
+    }
+    if (req.body.weeklyDiscountPercentage !== undefined) {
+      listing.weeklyDiscountPercentage = Number(req.body.weeklyDiscountPercentage || 0);
+    }
+    if (req.body.monthlyDiscountPercentage !== undefined) {
+      listing.monthlyDiscountPercentage = Number(req.body.monthlyDiscountPercentage || 0);
+    }
+    if (req.body.minRentalDays !== undefined) {
+      listing.minRentalDays = Math.max(1, Number(req.body.minRentalDays || 1));
+    }
+    if (req.body.maxRentalDays !== undefined) {
+      listing.maxRentalDays = Math.max(1, Number(req.body.maxRentalDays || 60));
+    }
     if (amenities !== undefined) {
       listing.amenities = Array.isArray(amenities)
         ? amenities
@@ -502,3 +527,40 @@ exports.adminDeleteListing = async (req, res) => {
     return res.status(500).json({ message: "Failed to delete listing." });
   }
 };
+
+/**
+ * POST /api/listings/:id/calculate-quote
+ * Calculate real-time pricing breakdown taking weekend rates and duration discounts into account.
+ */
+exports.calculateQuote = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { startDate, endDate } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid listing ID format." });
+    }
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ message: "Both startDate and endDate are required." });
+    }
+
+    const listing = await Listing.findById(id);
+    if (!listing) {
+      return res.status(404).json({ message: "Listing not found." });
+    }
+
+    const { calculateRentalPricing } = require("../utils/pricingCalculator");
+    const quote = calculateRentalPricing(listing, startDate, endDate);
+
+    return res.status(200).json({
+      success: true,
+      quote,
+    });
+  } catch (error) {
+    const status = error.status || 400;
+    return res.status(status).json({
+      message: error.message || "Unable to calculate rental quote.",
+    });
+  }
+};

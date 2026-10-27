@@ -21,6 +21,8 @@ import {
   Star,
   MessageSquare,
   Flag,
+  Percent,
+  Tag,
 } from "lucide-react";
 import api from "../../utils/api";
 import { isLoggedIn, getUser } from "../../utils/auth";
@@ -46,13 +48,13 @@ export default function ListingDetailPage() {
   const [loading, setLoading] = useState(true);
 
   // Booking form state
-  const today = new Date().toISOString().split("T")[0];
-  const nextWeek = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .split("T")[0];
-
-  const [startDate, setStartDate] = useState(today);
-  const [endDate, setEndDate] = useState(nextWeek);
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    return d.toISOString().split("T")[0];
+  });
+  const today = startDate;
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -65,6 +67,9 @@ export default function ListingDetailPage() {
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [mobileCalendarOpen, setMobileCalendarOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [quoteData, setQuoteData] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
 
   const [reviewsData, setReviewsData] = useState({
     reviews: [],
@@ -177,6 +182,36 @@ export default function ListingDetailPage() {
     if (id) fetchBookedRanges();
   }, [id, bookingSuccess]);
 
+  // Live Server Quote Engine (handles weekday/weekend differential, duration discounts, min/max limits)
+  useEffect(() => {
+    if (!id || !startDate || !endDate) return;
+    let isCancelled = false;
+
+    async function fetchQuote() {
+      setQuoteLoading(true);
+      setQuoteError("");
+      try {
+        const res = await api.post(`/listings/${id}/calculate-quote`, {
+          startDate,
+          endDate,
+        });
+        if (!isCancelled && res.data?.quote) {
+          setQuoteData(res.data.quote);
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          setQuoteError(err.response?.data?.message || "Invalid rental duration.");
+        }
+      } finally {
+        if (!isCancelled) setQuoteLoading(false);
+      }
+    }
+
+    fetchQuote();
+    return () => {
+      isCancelled = true;
+    };
+  }, [id, startDate, endDate]);
 
   if (loading) {
     return (
@@ -196,7 +231,7 @@ export default function ListingDetailPage() {
           <h2 className="text-2xl font-extrabold text-[var(--color-espresso)]">Listing not found</h2>
           <Link to="/explore">
             <Button variant="primary" className="mt-4">
-              Back to Catalog
+              Back to Rentals
             </Button>
           </Link>
         </div>
@@ -208,13 +243,28 @@ export default function ListingDetailPage() {
   const start = new Date(startDate);
   const end = new Date(endDate);
   const diffTime = Math.max(0, end - start);
-  const rentalDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+  const rentalDays = Number(quoteData?.rentalDays || quoteData?.days || Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24))));
 
   const dailyRate = Number(listing.rentalPricePerDay || 1500);
-  const baseTotal = dailyRate * rentalDays;
-  const securityDeposit = listing.deposit || Math.round(dailyRate * 1.5);
-  const serviceFee = Math.round(baseTotal * 0.05);
-  const grandTotal = baseTotal + securityDeposit + serviceFee;
+  const baseDailyPrice = Number(quoteData?.baseDailyPrice ?? quoteData?.dailyRate ?? dailyRate);
+  const weekendPricePerDay = Number(quoteData?.weekendPricePerDay ?? quoteData?.weekendRate ?? (listing.weekendPricePerDay || dailyRate));
+  const baseTotal = Number(quoteData ? (quoteData.grossAmount ?? quoteData.undiscountedBase ?? dailyRate * rentalDays) : dailyRate * rentalDays);
+  const discountAmount = Number(quoteData?.discountAmount || 0);
+  const discountPercentage = Number(quoteData?.appliedDiscountPercentage ?? quoteData?.discountPercentage ?? 0);
+  const netRentalTotal = Number(quoteData ? (quoteData.rentalTotal ?? quoteData.basePrice ?? Math.max(0, baseTotal - discountAmount)) : Math.max(0, baseTotal - discountAmount));
+  const securityDeposit = Number(quoteData?.deposit ?? (listing.deposit || Math.round(dailyRate * 1.5)));
+  const serviceFee = Number(quoteData?.serviceFee ?? Math.round(netRentalTotal * 0.05));
+  const grandTotal = Number(quoteData?.totalPrice ?? (netRentalTotal + securityDeposit + serviceFee));
+
+  // Duration limit checks
+  const minRentalDays = listing.minRentalDays || 1;
+  const maxRentalDays = listing.maxRentalDays || 90;
+  const durationLimitError =
+    rentalDays < minRentalDays
+      ? `Minimum rental period for this item is ${minRentalDays} day${minRentalDays > 1 ? "s" : ""}.`
+      : rentalDays > maxRentalDays
+      ? `Maximum allowable rental period is ${maxRentalDays} days.`
+      : quoteError || "";
 
   // Live Overlap Detection: Checks if user's selected dates clash with any active reservation
   const dateConflict = (() => {
@@ -303,7 +353,7 @@ export default function ListingDetailPage() {
         <div className="flex items-center gap-2 text-xs font-semibold text-[var(--color-muted-grey)] mb-5">
           <Link to="/" className="hover:text-[var(--color-brand-primary)]">Home</Link>
           <span>/</span>
-          <Link to="/explore" className="hover:text-[var(--color-brand-primary)]">Catalog</Link>
+          <Link to="/explore" className="hover:text-[var(--color-brand-primary)]">Rentals</Link>
           <span>/</span>
           <Link to={`/explore?category=${encodeURIComponent(categoryName || "")}`} className="hover:text-[var(--color-brand-primary)]">
             {categoryName}
@@ -448,6 +498,28 @@ export default function ListingDetailPage() {
                   <span>{categoryName}</span>
                 </span>
                 <StatusBadge status={listing.availability || "available"} />
+                {Boolean(listing.weekendPricePerDay && listing.weekendPricePerDay !== listing.rentalPricePerDay) && (
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 inline-flex items-center gap-1">
+                    <span>Fri-Sun: ₹{Number(listing.weekendPricePerDay).toLocaleString("en-IN")}/day</span>
+                  </span>
+                )}
+                {Boolean(listing.weeklyDiscountPercentage && listing.weeklyDiscountPercentage > 0) && (
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 inline-flex items-center gap-1">
+                    <Percent size={12} />
+                    <span>{listing.weeklyDiscountPercentage}% Off (7+ Days)</span>
+                  </span>
+                )}
+                {Boolean(listing.monthlyDiscountPercentage && listing.monthlyDiscountPercentage > 0) && (
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 inline-flex items-center gap-1">
+                    <Percent size={12} />
+                    <span>{listing.monthlyDiscountPercentage}% Off (30+ Days)</span>
+                  </span>
+                )}
+                {Boolean(listing.minRentalDays && listing.minRentalDays > 1) && (
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-500/10 text-slate-700 dark:text-slate-300 border border-slate-500/20">
+                    Min {listing.minRentalDays} days
+                  </span>
+                )}
                 {isOwner && (
                   <Link to={`/listings/${id}/edit`} className="ml-auto">
                     <Button variant="outline" size="sm" icon={Pencil}>
@@ -885,12 +957,50 @@ export default function ListingDetailPage() {
                 </div>
               )}
 
+              {/* Duration Limit Warning Banner */}
+              {durationLimitError && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs font-semibold flex items-start gap-2">
+                  <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-600" />
+                  <div>
+                    <div className="font-bold">Rental Duration Notice</div>
+                    <div className="font-normal text-[11px] mt-0.5">{durationLimitError}</div>
+                  </div>
+                </div>
+              )}
+
               {/* Transparent Price Breakdown */}
               <div className="flex flex-col gap-2.5 py-4 border-y border-[var(--color-border-subtle)] text-xs">
-                <div className="flex justify-between text-[var(--color-secondary-text)]">
-                  <span>₹{dailyRate.toLocaleString("en-IN")} × {rentalDays} day{rentalDays !== 1 ? "s" : ""}</span>
-                  <span className="font-semibold text-[var(--color-espresso)]">₹{baseTotal.toLocaleString("en-IN")}</span>
-                </div>
+                {quoteData && quoteData.weekendDays > 0 ? (
+                  <>
+                    <div className="flex justify-between text-[var(--color-secondary-text)]">
+                      <span>{quoteData.weekdayDays} Weekday{quoteData.weekdayDays !== 1 ? "s" : ""} × ₹{baseDailyPrice.toLocaleString("en-IN")}</span>
+                      <span className="font-semibold text-[var(--color-espresso)]">
+                        ₹{(quoteData.weekdayDays * baseDailyPrice).toLocaleString("en-IN")}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[var(--color-secondary-text)]">
+                      <span>{quoteData.weekendDays} Weekend Day{quoteData.weekendDays !== 1 ? "s" : ""} × ₹{weekendPricePerDay.toLocaleString("en-IN")}</span>
+                      <span className="font-semibold text-[var(--color-espresso)]">
+                        ₹{(quoteData.weekendDays * weekendPricePerDay).toLocaleString("en-IN")}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between text-[var(--color-secondary-text)]">
+                    <span>₹{dailyRate.toLocaleString("en-IN")} × {rentalDays} day{rentalDays !== 1 ? "s" : ""}</span>
+                    <span className="font-semibold text-[var(--color-espresso)]">₹{baseTotal.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                    <span className="flex items-center gap-1">
+                      <Percent size={12} />
+                      <span>{quoteData?.appliedDiscountType === "monthly" ? "Monthly" : "Weekly"} Discount ({discountPercentage}%)</span>
+                    </span>
+                    <span>-₹{discountAmount.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
 
                 <div className="flex justify-between text-[var(--color-secondary-text)]">
                   <span className="flex items-center gap-1">
@@ -923,10 +1033,24 @@ export default function ListingDetailPage() {
                     variant="primary"
                     size="lg"
                     fullWidth
-                    disabled={Boolean(dateConflict)}
-                    onClick={() => setBookingModalOpen(true)}
+                    disabled={Boolean(dateConflict || durationLimitError)}
+                    onClick={() => {
+                      if (!loggedIn) {
+                        navigate("/login", {
+                          state: { from: `/listings/${id}`, notice: "Please log in to reserve this rental." },
+                        });
+                        return;
+                      }
+                      setBookingModalOpen(true);
+                    }}
                   >
-                    {dateConflict ? "Selected Dates Unavailable" : "Reserve Rental"}
+                    {!loggedIn
+                      ? "Sign In to Reserve"
+                      : dateConflict
+                      ? "Selected Dates Unavailable"
+                      : durationLimitError
+                      ? "Adjust Rental Duration"
+                      : "Reserve Rental"}
                   </Button>
 
                   <Button
@@ -937,7 +1061,7 @@ export default function ListingDetailPage() {
                     onClick={() => {
                       if (!loggedIn) {
                         navigate("/login", {
-                          state: { from: `/listing/${id}`, notice: "Please log in to chat with the host." },
+                          state: { from: `/listings/${id}`, notice: "Please log in to chat with the host." },
                         });
                         return;
                       }
@@ -990,7 +1114,7 @@ export default function ListingDetailPage() {
               onClick={() => {
                 if (!loggedIn) {
                   navigate("/login", {
-                    state: { from: `/listing/${id}`, notice: "Please log in to chat with the host." },
+                    state: { from: `/listings/${id}`, notice: "Please log in to chat with the host." },
                   });
                   return;
                 }
@@ -1002,10 +1126,18 @@ export default function ListingDetailPage() {
             <Button
               variant="primary"
               size="md"
-              disabled={Boolean(dateConflict)}
-              onClick={() => setBookingModalOpen(true)}
+              disabled={Boolean(dateConflict || durationLimitError)}
+              onClick={() => {
+                if (!loggedIn) {
+                  navigate("/login", {
+                    state: { from: `/listings/${id}`, notice: "Please log in to reserve this rental." },
+                  });
+                  return;
+                }
+                setBookingModalOpen(true);
+              }}
             >
-              {dateConflict ? "Unavailable" : "Reserve"}
+              {!loggedIn ? "Sign In to Rent" : dateConflict ? "Unavailable" : "Reserve"}
             </Button>
           </div>
         )}
@@ -1149,12 +1281,38 @@ export default function ListingDetailPage() {
                   {startDate} to {endDate} ({rentalDays} {rentalDays === 1 ? "day" : "days"})
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--color-muted-grey)]">Daily Rate:</span>
-                <span className="font-semibold text-[var(--color-espresso)]">
-                  ₹{dailyRate.toLocaleString("en-IN")} /day × {rentalDays} = ₹{baseTotal.toLocaleString("en-IN")}
-                </span>
-              </div>
+              {quoteData && quoteData.weekendDays > 0 ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--color-muted-grey)]">Weekdays ({quoteData.weekdayDays}d):</span>
+                    <span className="font-semibold text-[var(--color-espresso)]">
+                      ₹{(quoteData.weekdayDays * baseDailyPrice).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--color-muted-grey)]">Weekends ({quoteData.weekendDays}d):</span>
+                    <span className="font-semibold text-[var(--color-espresso)]">
+                      ₹{(quoteData.weekendDays * weekendPricePerDay).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-muted-grey)]">Daily Rate:</span>
+                  <span className="font-semibold text-[var(--color-espresso)]">
+                    ₹{dailyRate.toLocaleString("en-IN")} /day × {rentalDays} = ₹{baseTotal.toLocaleString("en-IN")}
+                  </span>
+                </div>
+              )}
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <span className="flex items-center gap-1">
+                    <Percent size={12} />
+                    <span>{quoteData?.appliedDiscountType === "monthly" ? "Monthly" : "Weekly"} Discount ({discountPercentage}%):</span>
+                  </span>
+                  <span>-₹{discountAmount.toLocaleString("en-IN")}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-[var(--color-muted-grey)]">Security Deposit:</span>
                 <span className="font-semibold text-emerald-600">
