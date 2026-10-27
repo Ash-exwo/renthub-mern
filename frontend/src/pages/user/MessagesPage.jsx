@@ -80,12 +80,15 @@ export default function MessagesPage() {
   // Check safety modal acceptance on initial visit
   useEffect(() => {
     try {
-      const accepted = localStorage.getItem("renthub_chat_safety_accepted");
+      const userKey = currentUser?._id ? `renthub_chat_safety_accepted_${currentUser._id}` : null;
+      const accepted =
+        (userKey && localStorage.getItem(userKey) === "true") ||
+        localStorage.getItem("renthub_chat_safety_accepted") === "true";
       if (!accepted) {
         setSafetyModalOpen(true);
       }
     } catch {}
-  }, []);
+  }, [currentUser]);
 
   // Filter conversations strictly belonging to the currently active tab
   const currentTabConversations = useMemo(() => {

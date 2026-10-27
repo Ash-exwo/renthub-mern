@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Search,
@@ -13,6 +13,8 @@ import {
   Compass,
   Lock,
   Award,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import api from "../../utils/api";
 import { getUser } from "../../utils/auth";
@@ -26,6 +28,14 @@ export default function HomePage() {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState([]);
+  const categoryScrollRef = useRef(null);
+
+  const scrollCategories = (direction) => {
+    if (categoryScrollRef.current) {
+      const scrollAmount = direction === "left" ? -340 : 340;
+      categoryScrollRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
+    }
+  };
 
   // Search state
   const [searchLocation, setSearchLocation] = useState("");
@@ -73,8 +83,24 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col gap-12 sm:gap-16 lg:gap-24 pb-20">
-      {/* Clean Modern Hero Section */}
-      <section className="ambient-glow-wrapper text-center pt-6 sm:pt-10 lg:pt-14 pb-6 flex flex-col items-center relative">
+      {/* Clean Modern Hero Section with Spatial Kinetic Badges */}
+      <section className="ambient-glow-wrapper text-center pt-8 sm:pt-12 lg:pt-16 pb-8 flex flex-col items-center relative overflow-hidden">
+        {/* Floating Kinetic Badges (Superconscious Inspiration) */}
+        <div className="hidden lg:flex items-center gap-2.5 px-4 py-2 rounded-full bg-[var(--color-surface)]/90 backdrop-blur-md border border-[var(--color-border)] shadow-md text-xs font-bold text-[var(--color-espresso)] absolute top-12 left-10 xl:left-24 animate-float-1 z-10 pointer-events-none select-none">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+          <span>Sony FX3 Cinema Kit • Available Now</span>
+        </div>
+
+        <div className="hidden lg:flex items-center gap-2.5 px-4 py-2 rounded-full bg-[var(--color-surface)]/90 backdrop-blur-md border border-[var(--color-border)] shadow-md text-xs font-bold text-[var(--color-espresso)] absolute top-16 right-10 xl:right-24 animate-float-2 z-10 pointer-events-none select-none">
+          <span className="text-amber-500">★ 4.98</span>
+          <span>Top Rated Host in Kochi</span>
+        </div>
+
+        <div className="hidden xl:flex items-center gap-2.5 px-4 py-2 rounded-full bg-[var(--color-surface)]/90 backdrop-blur-md border border-[var(--color-border)] shadow-md text-xs font-bold text-[var(--color-espresso)] absolute bottom-12 right-20 animate-float-1 z-10 pointer-events-none select-none">
+          <span className="text-[var(--color-brand-primary)]">🔒</span>
+          <span>₹1,00,000 Damage Protected</span>
+        </div>
+
         <Container>
           {/* Badge */}
           <div className="inline-flex items-center gap-2 bg-rose-50 dark:bg-rose-950/40 text-[var(--color-brand-primary)] text-xs font-bold uppercase tracking-wider px-4 py-1.5 rounded-full border border-rose-200/80 dark:border-rose-900/60 mb-6 shadow-sm">
@@ -189,7 +215,7 @@ export default function HomePage() {
       {/* Popular Categories Grid */}
       <section>
         <Container>
-          <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-5">
             <div>
               <div className="text-xs font-bold uppercase tracking-wider text-[var(--color-brand-primary)] mb-1">
                 Explore The Marketplace
@@ -198,19 +224,50 @@ export default function HomePage() {
                 Browse by Category
               </h2>
             </div>
-            <Link to="/explore" className="text-sm font-bold text-[var(--color-brand-primary)] hover:underline inline-flex items-center gap-1">
-              <span>View all categories</span>
-              <span>&rarr;</span>
-            </Link>
+
+            <div className="flex items-center gap-3">
+              <Link
+                to="/explore"
+                className="text-sm font-bold text-[var(--color-brand-primary)] hover:underline inline-flex items-center gap-1 mr-1"
+              >
+                <span>View all categories</span>
+                <span>&rarr;</span>
+              </Link>
+
+              {/* Desktop Scroll Arrow Controls */}
+              {categories.length > 4 && (
+                <div className="hidden sm:flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => scrollCategories("left")}
+                    aria-label="Scroll categories left"
+                    className="w-8 h-8 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] hover:border-[var(--color-brand-primary)] text-[var(--color-espresso)] grid place-items-center transition-all cursor-pointer shadow-xs active:scale-95"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scrollCategories("right")}
+                    aria-label="Scroll categories right"
+                    className="w-8 h-8 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] hover:border-[var(--color-brand-primary)] text-[var(--color-espresso)] grid place-items-center transition-all cursor-pointer shadow-xs active:scale-95"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {categories.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-3 sm:gap-4">
+            <div
+              ref={categoryScrollRef}
+              className="flex items-stretch gap-3 sm:gap-4 overflow-x-auto pb-3 pt-1 scroll-smooth snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
               {categories.map((cat) => (
                 <Link
                   key={cat._id || cat.id || cat.name}
                   to={`/explore?category=${encodeURIComponent(cat.name)}`}
-                  className="flex flex-col items-center justify-center text-center p-3.5 sm:p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group cursor-pointer"
+                  className="w-32 sm:w-36 md:w-40 shrink-0 snap-start flex flex-col items-center justify-center text-center p-3.5 sm:p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-brand-primary)] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group cursor-pointer"
                 >
                   <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 group-hover:bg-rose-50 dark:group-hover:bg-rose-950/30 transition-all duration-200">
                     {cat.icon || "📦"}
@@ -225,6 +282,22 @@ export default function HomePage() {
                   )}
                 </Link>
               ))}
+
+              {/* End-Cap "View All" Card */}
+              <Link
+                to="/explore"
+                className="w-32 sm:w-36 md:w-40 shrink-0 snap-start flex flex-col items-center justify-center text-center p-3.5 sm:p-4 rounded-2xl bg-[var(--color-surface-subtle)] border border-dashed border-[var(--color-border)] hover:border-[var(--color-brand-primary)] hover:bg-[var(--color-brand-primary-subtle)] transition-all duration-200 group cursor-pointer"
+              >
+                <div className="w-12 h-12 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center text-[var(--color-brand-primary)] mb-2 group-hover:scale-110 transition-transform shadow-xs">
+                  <ArrowRight size={20} />
+                </div>
+                <span className="font-[var(--font-heading)] font-bold text-xs text-[var(--color-espresso)] group-hover:text-[var(--color-brand-primary)] transition-colors">
+                  View All
+                </span>
+                <span className="text-[10px] text-[var(--color-muted-grey)] mt-0.5">
+                  All Categories
+                </span>
+              </Link>
             </div>
           ) : (
             <div className="p-8 rounded-2xl border border-dashed border-[var(--color-border)] text-center text-sm text-[var(--color-muted-grey)]">
@@ -250,7 +323,7 @@ export default function HomePage() {
 
             <Link to="/explore">
               <Button variant="outline" size="sm" icon={Compass}>
-                Explore Full Catalog
+                Browse All Rentals
               </Button>
             </Link>
           </div>
@@ -361,43 +434,43 @@ export default function HomePage() {
         </Container>
       </section>
 
-      {/* Trust & Safety Guarantees */}
+      {/* Bento Grid Platform Guarantees (Superconscious Inspiration) */}
       <section>
         <Container>
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-8 sm:p-12 grid grid-cols-1 md:grid-cols-3 gap-8 shadow-sm">
-            <div>
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 grid place-items-center mb-5 shadow-sm">
-                <ShieldCheck size={26} />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-7 sm:p-8 rounded-3xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[0_10px_30px_-10px_rgba(0,0,0,0.05)] hover:border-emerald-500/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 grid place-items-center mb-5 shadow-xs group-hover:scale-110 transition-transform">
+                <ShieldCheck size={28} />
               </div>
-              <h3 className="text-lg font-extrabold text-[var(--color-espresso)] mb-2">
-                ₹1,00,000 Damage Coverage
+              <h3 className="font-[var(--font-heading)] font-black text-xl text-[var(--color-espresso)] mb-2">
+                ₹1,00,000 Coverage
               </h3>
               <p className="text-sm text-[var(--color-muted-grey)] leading-relaxed">
-                Every rental on RentHub carries built-in damage coverage to protect hosts and renters from accidental mishaps.
+                Built-in damage protection automatically attached to every rental transaction to safeguard both renters and hosts.
               </p>
             </div>
 
-            <div>
-              <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-[var(--color-brand-primary)] grid place-items-center mb-5 shadow-sm">
-                <Zap size={26} />
+            <div className="p-7 sm:p-8 rounded-3xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[0_10px_30px_-10px_rgba(0,0,0,0.05)] hover:border-[var(--color-brand-primary)]/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
+              <div className="w-14 h-14 rounded-2xl bg-rose-500/10 text-[var(--color-brand-primary)] grid place-items-center mb-5 shadow-xs group-hover:scale-110 transition-transform">
+                <Zap size={28} />
               </div>
-              <h3 className="text-lg font-extrabold text-[var(--color-espresso)] mb-2">
-                Instant Escrow Checkout
+              <h3 className="font-[var(--font-heading)] font-black text-xl text-[var(--color-espresso)] mb-2">
+                Instant Digital Escrow
               </h3>
               <p className="text-sm text-[var(--color-muted-grey)] leading-relaxed">
-                Funds are held in secure escrow and only disbursed to hosts after you inspect and accept the asset.
+                Payments are held in vault custody and only released when the item is physically handed over and inspected.
               </p>
             </div>
 
-            <div>
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 grid place-items-center mb-5 shadow-sm">
-                <Sparkles size={26} />
+            <div className="p-7 sm:p-8 rounded-3xl bg-[var(--color-surface)] border border-[var(--color-border)] shadow-[0_10px_30px_-10px_rgba(0,0,0,0.05)] hover:border-indigo-500/40 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 grid place-items-center mb-5 shadow-xs group-hover:scale-110 transition-transform">
+                <Sparkles size={28} />
               </div>
-              <h3 className="text-lg font-extrabold text-[var(--color-espresso)] mb-2">
+              <h3 className="font-[var(--font-heading)] font-black text-xl text-[var(--color-espresso)] mb-2">
                 100% Verified Community
               </h3>
               <p className="text-sm text-[var(--color-muted-grey)] leading-relaxed">
-                Every host and renter undergoes mandatory ID checks. Verified reviews prevent fabricated listings.
+                Government ID verification and two-way peer ratings keep the ecosystem fraud-free and accountability high.
               </p>
             </div>
           </div>

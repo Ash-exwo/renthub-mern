@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ShieldCheck,
   MessageSquare,
@@ -6,26 +6,71 @@ import {
   Camera,
   Lock,
   ArrowRight,
-  CheckCircle2,
+  Check,
 } from "lucide-react";
 import { Modal, Button } from "./ui";
+import { getUser } from "../utils/auth";
+
+export function saveSafetyAccepted(isAccepted) {
+  try {
+    const user = getUser();
+    const userKey = user?._id ? `renthub_chat_safety_accepted_${user._id}` : null;
+    if (isAccepted) {
+      localStorage.setItem("renthub_chat_safety_accepted", "true");
+      if (userKey) localStorage.setItem(userKey, "true");
+    } else {
+      localStorage.removeItem("renthub_chat_safety_accepted");
+      if (userKey) localStorage.removeItem(userKey);
+    }
+  } catch {}
+}
+
+export function checkSafetyAccepted() {
+  try {
+    const user = getUser();
+    const userKey = user?._id ? `renthub_chat_safety_accepted_${user._id}` : null;
+    return (
+      (userKey && localStorage.getItem(userKey) === "true") ||
+      localStorage.getItem("renthub_chat_safety_accepted") === "true"
+    );
+  } catch {
+    return false;
+  }
+}
 
 export default function ChatSafetyModal({ isOpen, onClose, onAccept }) {
-  const [agreed, setAgreed] = useState(false);
+  const [agreed, setAgreed] = useState(() => checkSafetyAccepted());
+
+  useEffect(() => {
+    if (isOpen) {
+      setAgreed(checkSafetyAccepted());
+    }
+  }, [isOpen]);
+
+  const handleCheckboxChange = (checked) => {
+    setAgreed(checked);
+    saveSafetyAccepted(checked);
+  };
 
   const handleConfirm = () => {
-    if (!agreed) return;
-    try {
-      localStorage.setItem("renthub_chat_safety_accepted", "true");
-    } catch {}
+    saveSafetyAccepted(true);
     if (onAccept) onAccept();
     if (onClose) onClose();
   };
 
+  const handleClose = () => {
+    if (agreed) {
+      saveSafetyAccepted(true);
+    }
+    if (onClose) onClose();
+  };
+
+  const alreadyAccepted = checkSafetyAccepted();
+
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       title="Safe Rental & Chat Guidelines"
       maxWidth="34rem"
       showClose={true}
@@ -105,17 +150,22 @@ export default function ChatSafetyModal({ isOpen, onClose, onAccept }) {
           </div>
         </div>
 
-        {/* User Agreement Checkbox */}
-        <label className="flex items-start gap-2.5 p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] cursor-pointer select-none hover:bg-[var(--color-surface-hover)] transition-colors">
+        {/* User Agreement & Don't Show Again Checkbox */}
+        <label className="flex items-start gap-2.5 p-3.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] cursor-pointer select-none hover:bg-[var(--color-surface-hover)] transition-colors">
           <input
             type="checkbox"
             checked={agreed}
-            onChange={(e) => setAgreed(e.target.checked)}
+            onChange={(e) => handleCheckboxChange(e.target.checked)}
             className="mt-0.5 w-4 h-4 rounded text-[var(--color-brand-primary)] border-gray-300 focus:ring-[var(--color-brand-primary)] cursor-pointer"
           />
-          <span className="text-xs text-[var(--color-espresso)] font-medium leading-relaxed">
-            I have read and agree to follow RentHub's Safe Chat & Handover Guidelines.
-          </span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-[var(--color-espresso)] font-bold leading-relaxed">
+              I have read and agree to follow RentHub's Safe Chat & Handover Guidelines.
+            </span>
+            <span className="text-[11px] text-[var(--color-muted-grey)] font-medium">
+              Don't show this safety prompt again automatically when opening chats.
+            </span>
+          </div>
         </label>
 
         {/* Action Buttons */}
@@ -124,7 +174,7 @@ export default function ChatSafetyModal({ isOpen, onClose, onAccept }) {
             type="button"
             variant="ghost"
             size="md"
-            onClick={onClose}
+            onClick={handleClose}
           >
             Cancel
           </Button>
@@ -132,11 +182,11 @@ export default function ChatSafetyModal({ isOpen, onClose, onAccept }) {
             type="button"
             variant="primary"
             size="md"
-            icon={ArrowRight}
+            icon={alreadyAccepted ? Check : ArrowRight}
             disabled={!agreed}
             onClick={handleConfirm}
           >
-            Continue to Chat
+            {alreadyAccepted ? "Acknowledge & Close" : "Continue to Chat"}
           </Button>
         </div>
       </div>

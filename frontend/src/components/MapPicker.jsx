@@ -49,6 +49,54 @@ export default function MapPicker({
   const [searchResults, setSearchResults] = useState([]);
   const [searchError, setSearchError] = useState("");
 
+  // Reverse geocode to get human-friendly address string
+  const reverseGeocode = async (lat, lng) => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const address = data.address || {};
+        const area =
+          address.suburb ||
+          address.neighbourhood ||
+          address.residential ||
+          address.city_district ||
+          address.village ||
+          address.town ||
+          address.city ||
+          "";
+        const city = address.city || address.town || address.county || address.state || "";
+        const state = address.state || "";
+
+        let formatted = [area, city, state].filter(Boolean).join(", ");
+        if (!formatted && data.display_name) {
+          formatted = data.display_name.split(",").slice(0, 3).join(",").trim();
+        }
+
+        if (formatted) {
+          onChange?.({
+            location: formatted,
+            coordinates: { lat, lng },
+          });
+        } else {
+          onChange?.({
+            location: location || `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+            coordinates: { lat, lng },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("Reverse geocode failed:", err);
+      onChange?.({
+        location: location || `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+        coordinates: { lat, lng },
+      });
+    }
+  };
+
   // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -111,54 +159,6 @@ export default function MapPicker({
       }
     }
   }, [coordinates]);
-
-  // Reverse geocode to get human-friendly address string
-  const reverseGeocode = async (lat, lng) => {
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`,
-        { headers: { "Accept-Language": "en" } }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        const address = data.address || {};
-        const area =
-          address.suburb ||
-          address.neighbourhood ||
-          address.residential ||
-          address.city_district ||
-          address.village ||
-          address.town ||
-          address.city ||
-          "";
-        const city = address.city || address.town || address.county || address.state || "";
-        const state = address.state || "";
-
-        let formatted = [area, city, state].filter(Boolean).join(", ");
-        if (!formatted && data.display_name) {
-          formatted = data.display_name.split(",").slice(0, 3).join(",").trim();
-        }
-
-        if (formatted) {
-          onChange?.({
-            location: formatted,
-            coordinates: { lat, lng },
-          });
-        } else {
-          onChange?.({
-            location: location || `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
-            coordinates: { lat, lng },
-          });
-        }
-      }
-    } catch (err) {
-      console.warn("Reverse geocode failed:", err);
-      onChange?.({
-        location: location || `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
-        coordinates: { lat, lng },
-      });
-    }
-  };
 
   // Forward search using Nominatim
   const handleSearch = async (e) => {

@@ -103,13 +103,13 @@ export default function MyListingsPage() {
         <div className="flex justify-between items-center flex-wrap gap-4 mb-8">
           <div>
             <span className="text-xs font-bold text-[var(--color-terracotta)] uppercase tracking-wider">
-              Asset Inventory
+              Host Management
             </span>
             <h1 className="font-[var(--font-heading)] text-2xl sm:text-4xl font-extrabold text-[var(--color-espresso)] mt-1">
               My Listings
             </h1>
             <p className="text-sm text-[var(--color-muted-grey)] mt-1">
-              Manage availability, edit pricing, and view your published rental catalog.
+              Manage availability, edit pricing, and view your active rental listings.
             </p>
           </div>
 
